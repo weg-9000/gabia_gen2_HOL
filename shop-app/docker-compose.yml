@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # FastAPI 애플리케이션
+  api:
+    build: .
+    image: gabia-shop:latest
+    container_name: gabia-shop-api
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - DATABASE_URL=postgresql://shopuser:shoppass@db:5432/shopdb
+      - DEBUG=false
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - gabia-network
+    restart: unless-stopped
+    volumes:
+      - ./app:/app/app  # 개발 시 코드 마운트
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # PostgreSQL 데이터베이스
+  db:
+    image: postgres:15-alpine
+    container_name: gabia-shop-db
+    environment:
+      - POSTGRES_USER=shopuser
+      - POSTGRES_PASSWORD=shoppass
+      - POSTGRES_DB=shopdb
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - gabia-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shopuser -d shopdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Nginx (선택사항 - 프록시 서버)
+  nginx:
+    image: nginx:alpine
+    container_name: gabia-shop-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+    networks:
+      - gabia-network
+    restart: unless-stopped
+
+networks:
+  gabia-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+    driver: local
