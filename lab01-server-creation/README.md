@@ -14,13 +14,13 @@
 ## 🎯 학습 목표
 
 이 Lab을 완료하면 다음을 할 수 있습니다:
-- ✅ 가비아 클라우드 콘솔에서 가상 서버(VM)를 생성할 수 있습니다
-- ✅ SSH를 통해 원격 서버에 접속할 수 있습니다
-- ✅ Linux 서버에 Python 애플리케이션을 배포할 수 있습니다
-- ✅ 클라우드 인프라의 기본 개념을 이해합니다
+- 가비아 클라우드 콘솔에서 가상 서버(VM)를 생성할 수 있습니다
+- SSH를 통해 원격 서버에 접속할 수 있습니다
+- Linux 서버에 Python 애플리케이션을 배포할 수 있습니다
+- 클라우드 인프라의 기본 개념을 이해합니다
 
 **소요 시간**: 20-30분  
-**난이도**: ⭐ 초급  
+**난이도**: 초급  
 **선행 지식**: 기본적인 Linux 명령어, 터미널 사용법
 
 ---
@@ -34,14 +34,14 @@
 #### 전통적인 방식의 문제점
 ```
 물리 서버 구매 → 데이터센터 설치 → 네트워크 구성 → OS 설치
-⏰ 소요 시간: 수 주 ~ 수 개월
+소요 시간: 수 주 ~ 수 개월
 💰 초기 비용: 수천만 원 이상
 ```
 
 #### 클라우드의 혁신
 ```
 콘솔에서 클릭 → 서버 즉시 생성
-⏰ 소요 시간: 수 분
+소요 시간: 수 분
 💰 초기 비용: 시간당 과금
 ```
 
@@ -84,9 +84,9 @@
 **2. 격리성 (Isolation)**
 ```bash
 # VM 1의 문제가 VM 2에 영향을 주지 않음
-VM 1: 애플리케이션 크래시 ❌
-VM 2: 정상 동작 ✅
-VM 3: 정상 동작 ✅
+VM 1: 애플리케이션 크래시 
+VM 2: 정상 동작 
+VM 3: 정상 동작 
 ```
 
 **3. 스냅샷 및 백업**
@@ -116,10 +116,10 @@ $ snapshot restore server-1  # 문제 발생 시 즉시 복원
 ```
 
 **왜 IaaS로 시작하는가?**
-- ✅ 가장 높은 제어 수준 (OS부터 직접 관리)
-- ✅ 모든 기술 스택 선택 가능
-- ✅ 클라우드 인프라의 기본 개념 학습에 최적
-- ✅ 다른 서비스(PaaS, SaaS)의 기반이 됨
+- 가장 높은 제어 수준 (OS부터 직접 관리)
+- 모든 기술 스택 선택 가능
+- 클라우드 인프라의 기본 개념 학습에 최적
+- 다른 서비스(PaaS, SaaS)의 기반이 됨
 
 ### 3. 서버 스펙 구성 요소
 
@@ -165,7 +165,7 @@ HDD      = 대용량 데이터 저장 (저렴하지만 느림)
 | 읽기 속도 | 100-150 MB/s | 500-3000 MB/s |
 | IOPS | 100-200 | 10,000-100,000 |
 | 지연시간 | 10-20ms | 0.1ms |
-| 데이터베이스 | ❌ | ✅ |
+| 데이터베이스 | | |
 
 ### 4. SSH (Secure Shell)
 
@@ -183,11 +183,11 @@ HDD      = 대용량 데이터 저장 (저렴하지만 느림)
 ```bash
 # 텔넷 (구식) - 평문 전송
 Username: admin
-Password: 12345  ← 누구나 볼 수 있음 ❌
+Password: 12345  ← 누구나 볼 수 있음 
 
 # SSH (현대) - 암호화 전송
 Username: admin
-Password: ••••• ← 암호화됨 ✅
+Password: ••••• ← 암호화됨 
 ```
 
 **2. 인증 방식**
@@ -213,7 +213,7 @@ ssh -i ~/.ssh/my-key.pem user@server
 1. 서버가 챌린지 전송
 2. 개인키로 서명
 3. 서버가 공개키로 검증
-4. 인증 성공 ✅
+4. 인증 성공 
 ```
 
 ---
@@ -262,8 +262,8 @@ https://www.gabiacloud.com
 
 **1. 가용성 (Availability)**
 ```
-Zone A 장애 발생 ❌
-Zone B 정상 동작 ✅
+Zone A 장애 발생 
+Zone B 정상 동작 
 → 서비스 계속 운영 가능
 ```
 
@@ -302,7 +302,7 @@ Windows:
 **1. LTS (Long Term Support)**
 ```
 일반 릴리스: 9개월 지원
-LTS 릴리스: 5년 지원 ✅
+LTS 릴리스: 5년 지원 
 
 Ubuntu 22.04 LTS
 지원 기간: 2022 ~ 2027
@@ -338,17 +338,17 @@ status: done
 **스펙 옵션**
 | vCore | RAM | 용도 | 이 Lab |
 |-------|-----|------|--------|
-| 1 | 1GB | 테스트 전용 | ❌ |
-| 2 | 4GB | 일반 웹 서버 | ✅ |
-| 4 | 8GB | 중규모 앱 | ❌ |
-| 8 | 16GB | 고성능 앱 | ❌ |
+| 1 | 1GB | 테스트 전용 | |
+| 2 | 4GB | 일반 웹 서버 | |
+| 4 | 8GB | 중규모 앱 | |
+| 8 | 16GB | 고성능 앱 | |
 
 **왜 2 vCore / 4GB를 선택하는가?**
 
 **1. 비용 대비 성능**
 ```
 1 vCore/1GB: 월 10,000원 - 너무 작음
-2 vCore/4GB: 월 30,000원 - 최적 ✅
+2 vCore/4GB: 월 30,000원 - 최적 
 4 vCore/8GB: 월 60,000원 - 과할 수 있음
 ```
 
@@ -362,7 +362,7 @@ max_concurrent = 200 동시 요청
 # 실제 벤치마크
 $ ab -n 1000 -c 100 http://localhost:8000/products
 Requests per second: 850 req/s
-→ 충분한 성능 ✅
+→ 충분한 성능 
 ```
 
 **3. 메모리 사용 패턴**
@@ -373,7 +373,7 @@ Mem:           4.0Gi       1.2Gi       2.8Gi
 Swap:            0B          0B          0B
 
 # 여유 메모리 2.8GB
-# PostgreSQL, Redis 추가 가능 ✅
+# PostgreSQL, Redis 추가 가능 
 ```
 
 #### 2.5 스토리지 선택
@@ -406,16 +406,16 @@ Total:                50GB
 **SSD vs HDD 선택 기준**
 ```
 SSD (이 Lab 선택):
-✅ 빠른 속도 (500MB/s+)
-✅ 낮은 지연 (0.1ms)
-✅ 데이터베이스 적합
-❌ 비용 높음 (GB당 200원)
+빠른 속도 (500MB/s+)
+낮은 지연 (0.1ms)
+데이터베이스 적합
+비용 높음 (GB당 200원)
 
 HDD:
-✅ 저렴함 (GB당 50원)
-❌ 느린 속도 (100MB/s)
-❌ 높은 지연 (10ms)
-❌ 웹 서버에 부적합
+저렴함 (GB당 50원)
+느린 속도 (100MB/s)
+높은 지연 (10ms)
+웹 서버에 부적합
 ```
 
 #### 2.6 네트워크 설정
@@ -442,11 +442,11 @@ HDD:
 **공인 IP가 필요한 이유**
 ```bash
 # 공인 IP 없음
-내 PC → ❌ → 서버
+내 PC → → 서버
 접속 불가능
 
 # 공인 IP 있음
-내 PC → ✅ → 123.456.789.10 → 서버
+내 PC → → 123.456.789.10 → 서버
 접속 가능
 ```
 
@@ -466,10 +466,10 @@ ssh-keygen -t rsa -b 4096 -f ~/.ssh/gabia-key
 ```
 
 **왜 자동 생성을 선택하는가?**
-- ✅ 간편함 (클릭 한 번)
-- ✅ 올바른 형식 보장
-- ✅ 즉시 사용 가능
-- ❌ 다만, 백업 필수 (분실 시 접속 불가)
+- 간편함 (클릭 한 번)
+- 올바른 형식 보장
+- 즉시 사용 가능
+- 다만, 백업 필수 (분실 시 접속 불가)
 
 **키 보안 설정**
 ```bash
@@ -499,7 +499,7 @@ chmod 400 gabia-lab-key.pem
       ↓ (1분)
 상태: Starting... (시작 중)
       ↓ (1분)  
-상태: Running ✅ (실행 중)
+상태: Running (실행 중)
 ```
 
 ### 3단계: SSH 접속
@@ -572,21 +572,21 @@ sudo apt update && sudo apt upgrade -y
 ```bash
 # 보안 취약점 수정
 CVE-2024-1234: OpenSSL 보안 이슈
-→ apt upgrade로 자동 패치 ✅
+→ apt upgrade로 자동 패치 
 ```
 
 **2. 버그 수정**
 ```bash
 # 소프트웨어 버그 수정
 Python 3.10.1 → 3.10.12
-→ 메모리 누수 버그 수정 ✅
+→ 메모리 누수 버그 수정 
 ```
 
 **3. 새로운 기능**
 ```bash
 # 새로운 기능 추가
 Git 2.30 → 2.40
-→ 성능 개선 및 새 명령어 ✅
+→ 성능 개선 및 새 명령어 
 ```
 
 **명령어 분석**
@@ -700,8 +700,8 @@ sudo pip3 install fastapi==0.95.0
 
 # 다른 프로젝트에서
 sudo pip3 install fastapi==0.104.0
-→ 기존 버전 덮어씌워짐 ❌
-→ 첫 번째 프로젝트 동작 안 함 ❌
+→ 기존 버전 덮어씌워짐 
+→ 첫 번째 프로젝트 동작 안 함 
 ```
 
 **시나리오: 가상환경 사용**
@@ -709,14 +709,14 @@ sudo pip3 install fastapi==0.104.0
 # 프로젝트 A
 python3 -m venv venv-a
 source venv-a/bin/activate
-pip install fastapi==0.95.0 ✅
+pip install fastapi==0.95.0 
 
 # 프로젝트 B
 python3 -m venv venv-b
 source venv-b/bin/activate
-pip install fastapi==0.104.0 ✅
+pip install fastapi==0.104.0 
 
-# 충돌 없음! 각자 독립적 ✅
+# 충돌 없음! 각자 독립적 
 ```
 
 **가상환경 활성화 확인**
@@ -761,12 +761,12 @@ python-dotenv==1.0.0  # 환경 변수
 # 버전 명시 안 함
 pip install fastapi
 → 최신 버전 설치
-→ 호환성 문제 발생 가능 ❌
+→ 호환성 문제 발생 가능 
 
 # 버전 명시
 pip install fastapi==0.104.1
 → 정확한 버전 설치
-→ 재현 가능한 환경 ✅
+→ 재현 가능한 환경 
 ```
 
 #### 5.3 환경 변수 설정
@@ -779,7 +779,7 @@ vim .env
 
 **코드에 직접 작성 (나쁜 예)**
 ```python
-# ❌ 절대 이렇게 하지 마세요!
+# 절대 이렇게 하지 마세요!
 DATABASE_URL = "postgresql://admin:password123@localhost/db"
 SECRET_KEY = "my-secret-key"
 
@@ -791,7 +791,7 @@ SECRET_KEY = "my-secret-key"
 
 **환경 변수 사용 (좋은 예)**
 ```python
-# ✅ 올바른 방법
+# 올바른 방법
 import os
 DATABASE_URL = os.getenv("DATABASE_URL")
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -819,11 +819,11 @@ app.main:app         # app/main.py의 app 객체
 ```bash
 # --host 127.0.0.1 (로컬호스트)
 서버 내부에서만 접근 가능
-외부 → ❌ → 서버:8000
+외부 → → 서버:8000
 
 # --host 0.0.0.0 (모든 인터페이스)
 외부에서도 접근 가능
-외부 → ✅ → 서버:8000
+외부 → → 서버:8000
 ```
 
 **실행 로그**
@@ -891,7 +891,7 @@ curl http://123.456.789.10:8000/stats
 ```bash
 # SSH 세션에서 실행
 uvicorn app.main:app --host 0.0.0.0 --port 8000
-# SSH 종료 → 앱도 종료 ❌
+# SSH 종료 → 앱도 종료 
 ```
 
 **해결책 1: nohup (간단)**
@@ -940,11 +940,11 @@ sudo systemctl status shop-api
 
 **왜 systemd가 좋은가?**
 ```
-✅ 자동 재시작 (크래시 시)
-✅ 부팅 시 자동 시작
-✅ 로그 관리 (journalctl)
-✅ 리소스 제한 가능
-✅ 의존성 관리
+자동 재시작 (크래시 시)
+부팅 시 자동 시작
+로그 관리 (journalctl)
+리소스 제한 가능
+의존성 관리
 ```
 
 ---
@@ -1004,9 +1004,9 @@ sudo systemctl status shop-api
 
 | 프레임워크 | 성능 | 학습 곡선 | 비동기 | 타입 안전 |
 |-----------|------|----------|--------|----------|
-| Django | ⭐⭐⭐ | 높음 | ❌ | ❌ |
-| Flask | ⭐⭐⭐⭐ | 낮음 | ❌ | ❌ |
-| **FastAPI** | ⭐⭐⭐⭐⭐ | 중간 | ✅ | ✅ |
+| Django | | 높음 | | |
+| Flask | | 낮음 | | |
+| **FastAPI** | | 중간 | | |
 
 **FastAPI의 장점**
 
@@ -1125,12 +1125,12 @@ Connection refused
 ```bash
 # 확인
 ls -l key.pem
--rw-r--r--  # ❌ 너무 개방적
+-rw-r--r--  # 너무 개방적
 
 # 해결
 chmod 400 key.pem
 ls -l key.pem
--r--------  # ✅ 올바름
+-r--------  # 올바름
 ```
 
 **원인 2: 방화벽 규칙**
@@ -1167,10 +1167,10 @@ curl: (7) Failed to connect
 **원인 2: 앱이 127.0.0.1로 바인딩**
 ```bash
 # 잘못된 실행
-uvicorn app.main:app --host 127.0.0.1  # ❌
+uvicorn app.main:app --host 127.0.0.1  # 
 
 # 올바른 실행
-uvicorn app.main:app --host 0.0.0.0  # ✅
+uvicorn app.main:app --host 0.0.0.0  # 
 ```
 
 **원인 3: 앱이 실행 중이 아님**
@@ -1194,12 +1194,12 @@ ERROR: Could not install packages due to an EnvironmentError
 ```bash
 # 가상환경 활성화 확인
 $ which python3
-/usr/bin/python3  # ❌ 시스템 Python
+/usr/bin/python3  # 시스템 Python
 
 # 가상환경 활성화
 $ source venv/bin/activate
 (venv) $ which python3
-/home/ubuntu/venv/bin/python3  # ✅ 가상환경 Python
+/home/ubuntu/venv/bin/python3  # 가상환경 Python
 ```
 
 ### 문제 4: 메모리 부족
@@ -1213,7 +1213,7 @@ MemoryError: Unable to allocate array
 ```bash
 $ free -h
               total        used        free
-Mem:           4.0Gi       3.9Gi       100Mi  # ❌ 여유 메모리 부족
+Mem:           4.0Gi       3.9Gi       100Mi  # 여유 메모리 부족
 ```
 
 **해결책**
@@ -1307,10 +1307,10 @@ PostgreSQL을 위한 별도 디스크 추가
 
 ```
 이 Lab의 지식으로 할 수 있는 것:
-✅ 개발/테스트 환경 즉시 구축
-✅ 웹 애플리케이션 배포
-✅ CI/CD 파이프라인 구성
-✅ 마이크로서비스 아키텍처 시작점
+개발/테스트 환경 즉시 구축
+웹 애플리케이션 배포
+CI/CD 파이프라인 구성
+마이크로서비스 아키텍처 시작점
 ```
 
 ---

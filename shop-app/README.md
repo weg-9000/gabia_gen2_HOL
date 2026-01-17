@@ -4,13 +4,13 @@
 
 ## 기능
 
-- ✅ 제품 CRUD (Create, Read, Update, Delete)
-- ✅ 카테고리 관리
-- ✅ 주문 처리 (재고 관리 포함)
-- ✅ 헬스체크 및 통계
-- ✅ PostgreSQL 데이터베이스 지원
-- ✅ Docker 컨테이너화
-- ✅ Kubernetes 배포 준비
+- 제품 CRUD (Create, Read, Update, Delete)
+- 카테고리 관리
+- 주문 처리 (재고 관리 포함)
+- 헬스체크 및 통계
+- PostgreSQL 데이터베이스 지원
+- Docker 컨테이너화
+- Kubernetes 배포 준비
 
 ## 기술 스택
 
