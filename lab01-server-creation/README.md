@@ -249,14 +249,8 @@ https://www.gabiacloud.com
 콘솔 → Gen2 → 서버 → 서버 생성
 ```
 
-#### 2.2 존(Zone) 선택
+#### 2.2 존(Zone) 선택 (가비아는 없음)
 
-**존이란?**
-```
-가비아 클라우드 데이터센터 위치
-├── 가산A (경기도 가산)
-└── 가산B (경기도 가산 - 다른 건물)
-```
 
 **왜 존을 선택하는가?**
 
@@ -289,12 +283,9 @@ Zone B (부산): 15ms ← 더 느림
 **사용 가능한 이미지**
 ```
 Linux:
-├── Ubuntu 22.04 LTS ← 이 Lab에서 사용
-├── CentOS 7/8
-└── Rocky Linux
-
-Windows:
-└── Windows Server 2019/2022
+├── Ubuntu 22.04, 24.04 ← 이 Lab에서 사용
+├── Window Server 2016,2019,2022
+└── Rocky Linux 8.10, 9.6
 ```
 
 **왜 Ubuntu 22.04를 선택하는가?**
@@ -333,23 +324,24 @@ $ cloud-init status
 status: done
 ```
 
+
 #### 2.4 서버 스펙 선택
 
 **스펙 옵션**
 | vCore | RAM | 용도 | 이 Lab |
 |-------|-----|------|--------|
-| 1 | 1GB | 테스트 전용 | |
-| 2 | 4GB | 일반 웹 서버 | |
-| 4 | 8GB | 중규모 앱 | |
-| 8 | 16GB | 고성능 앱 | |
+| 2 | 8GB | 일반 웹 서버 | |
+| 4 | 16GB | 중규모 앱 | |
+| 8 | 32GB | 고성능 앱 | |
+| 16 | 64GB | 고성능 앱 | |
+| 32 | 128GB | 고성능 앱 | |
 
 **왜 2 vCore / 4GB를 선택하는가?**
 
 **1. 비용 대비 성능**
 ```
-1 vCore/1GB: 월 10,000원 - 너무 작음
-2 vCore/4GB: 월 30,000원 - 최적 
-4 vCore/8GB: 월 60,000원 - 과할 수 있음
+2 vCore/8GB: 월 80,000원 - 최적 
+4 vCore/16GB: 월 148,500원 - 과할 수 있음
 ```
 
 **2. 동시 사용자 처리 능력**
@@ -403,20 +395,6 @@ Docker 이미지:        10GB (Lab 11)
 Total:                50GB
 ```
 
-**SSD vs HDD 선택 기준**
-```
-SSD (이 Lab 선택):
-빠른 속도 (500MB/s+)
-낮은 지연 (0.1ms)
-데이터베이스 적합
-비용 높음 (GB당 200원)
-
-HDD:
-저렴함 (GB당 50원)
-느린 속도 (100MB/s)
-높은 지연 (10ms)
-웹 서버에 부적합
-```
 
 #### 2.6 네트워크 설정
 
@@ -452,7 +430,7 @@ HDD:
 
 #### 2.7 SSH 키 생성
 
-**옵션 1: 콘솔에서 자동 생성** (권장 - 이 Lab)
+**옵션 1: 콘솔에서 생성** (권장 - 이 Lab)
 ```
 1. "새 키 페어 생성" 선택
 2. 이름: gabia-lab-key
@@ -465,16 +443,23 @@ HDD:
 ssh-keygen -t rsa -b 4096 -f ~/.ssh/gabia-key
 ```
 
-**왜 자동 생성을 선택하는가?**
-- 간편함 (클릭 한 번)
-- 올바른 형식 보장
-- 즉시 사용 가능
-- 다만, 백업 필수 (분실 시 접속 불가)
-
 **키 보안 설정**
 ```bash
 # 다운로드한 키 권한 설정 (필수!)
 chmod 400 gabia-lab-key.pem
+
+```
+| 방법 | 설명 |
+|------|------|
+| **WSL (추천)** | Windows Subsystem for Linux 설치 후 Ubuntu 터미널에서 실행 |
+| **Git Bash** | Git 설치 시 함께 설치되는 Bash 터미널에서 실행 |
+| **PowerShell** | 아래 별도 명령어 사용 |
+
+```PowerShell
+icacls gabia-lab-key.pem /inheritance:r
+whoami
+icacls gabia-lab-key.pem /grant:r "DESKTOP-ABC\홍길동:(R)"
+
 
 # 왜 400인가?
 # 4 = 소유자만 읽기 가능
@@ -735,8 +720,8 @@ $ which python3
 #### 5.1 애플리케이션 코드 가져오기
 ```bash
 # 옵션 1: Git에서 클론
-git clone https://github.com/your-repo/gabia-cloud-gen2-hol.git
-cd gabia-cloud-gen2-hol/shop-app
+git clone https://github.com/your-repo/gabia_gen2_HOL
+cd gabia_gen2_HOL/shop-app
 
 # 옵션 2: 직접 생성
 mkdir -p ~/shop-app
