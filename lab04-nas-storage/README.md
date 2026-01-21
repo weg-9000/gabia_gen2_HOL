@@ -321,9 +321,11 @@ rpcinfo -p
 
 #### 3.1 마운트 포인트 생성
 ```bash
-sudo mkdir -p /mnt/nas/product-images
-sudo mkdir -p /mnt/nas/uploads
-sudo mkdir -p /mnt/nas/logs
+ls -la /mnt/nas
+sudo ln -s /mnt/nas/share폴더 이름 /mnt/nas-share
+sudo mkdir -p /mnt/nas-share/product-images
+sudo mkdir -p /mnt/nas-share/uploads
+sudo mkdir -p /mnt/nas-share/logs
 ```
 
 **디렉토리 구조 계획**
