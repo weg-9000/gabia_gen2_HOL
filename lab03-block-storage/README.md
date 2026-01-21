@@ -598,7 +598,9 @@ UUID 방식:
 ```bash
 sudo vim /etc/fstab
 ```
-
+```
+ G → o → [내용 입력] → Esc → :wq! → Enter 
+```
 **추가할 내용**
 ```
 UUID=12345678-1234-1234-1234-123456789abc /var/lib/postgresql ext4 defaults 0 0
