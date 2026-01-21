@@ -837,7 +837,8 @@ GRANT ALL PRIVILEGES ON DATABASE shopdb TO shopuser;
 #### 7.3 쇼핑몰 스키마 생성
 ```bash
 # SQL 파일 실행
-sudo -u postgres psql -d shopdb -f ~/gabia-cloud-gen2-hol/shop-app/docker/init-db.sql
+cp ~/gabia_gen2_HOL/shop-app/docker/init-db.sql /tmp/
+sudo -u postgres psql -d shopdb -f /tmp/init-db.sql
 ```
 
 **init-db.sql 주요 내용**
