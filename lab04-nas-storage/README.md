@@ -337,42 +337,20 @@ sudo mkdir -p /mnt/nas-share/logs
 ```
 
 #### 3.2 임시 마운트 테스트
-```bash
-sudo mount -t nfs4 \
-  nas-shop-12345.gabia.com:/shop-files \
-  /mnt/nas
-```
+안해도됨
 
-**명령어 분석**
-```bash
-mount          # 마운트 명령
--t nfs4        # 타입: NFSv4
-nas-shop-12345.gabia.com  # NAS 서버
-:/shop-files   # NAS의 공유 경로
-/mnt/nas       # 로컬 마운트 포인트
-```
-
-#### 3.3 마운트 확인
-```bash
-df -h | grep nas
-```
-
-**출력**
-```
-nas-shop-12345.gabia.com:/shop-files  100G  128K   95G   1% /mnt/nas
-```
 
 #### 3.4 권한 테스트
 ```bash
 # 쓰기 테스트
-sudo touch /mnt/nas/test.txt
-echo "Hello NAS" | sudo tee /mnt/nas/test.txt
+sudo touch /mnt/nas-share/test.txt
+echo "Hello NAS" | sudo tee /mnt/nas-share/test.txt
 
 # 읽기 테스트
-cat /mnt/nas/test.txt
+cat /mnt/nas-share/test.txt
 
 # 삭제 테스트
-sudo rm /mnt/nas/test.txt
+sudo rm /mnt/nas-share/test.txt
 ```
 
 모두 성공하면 
@@ -386,7 +364,7 @@ sudo vim /etc/fstab
 
 **추가할 내용**
 ```
-nas-shop-12345.gabia.com:/shop-files /mnt/nas nfs4 rw,hard,intr,rsize=1048576,wsize=1048576,timeo=600,retrans=2 0 0
+nas-shop-12345.gabia.com:/ /mnt/nas nfs4 defaults 0 0
 ```
 
 **옵션 상세 설명**
@@ -446,12 +424,12 @@ df -h | grep nas
 #### 5.1 업로드 디렉토리 설정
 ```bash
 # 디렉토리 생성
-sudo mkdir -p /mnt/nas/product-images
-sudo chown -R ubuntu:ubuntu /mnt/nas
+sudo mkdir -p /mnt/nas-share/product-images
+sudo chown -R ubuntu:ubuntu /mnt/nas-share
 
 # 심볼릭 링크 생성
-cd ~/gabia-cloud-gen2-hol/shop-app
-ln -s /mnt/nas/product-images static/images
+cd ~/gabia_gen2_HOL/shop-app
+ln -s /mnt/nas-share/product-images static/images
 ```
 
 **왜 심볼릭 링크인가?**
@@ -474,10 +452,13 @@ import shutil
 
 router = APIRouter()
 
-UPLOAD_DIR = Path("/mnt/nas/product-images")
+UPLOAD_DIR = Path("/mnt/nas-share/product-images")
 
 @router.post("/upload")
 async def upload_image(file: UploadFile = File(...)):
+    # 디렉토리 없으면 생성
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    
     file_path = UPLOAD_DIR / file.filename
     
     with file_path.open("wb") as buffer:
