@@ -227,10 +227,10 @@ sudo apt install -y curl wget vim htop net-tools
 ## 학습 목표
 
 - 사용자 스크립트 생성 및 관리
-- 서버 생성 시 자동 초기화 설정
-- 스크립트 실행 결과 확인
+- 서버 생성 시 shop-app 자동 배포 설정
+- 스크립트 실행 결과 및 API 동작 확인
 
-**소요 시간**: 20분
+**소요 시간**: 25분
 **난이도**: 초급
 **선행 조건**: Lab 01-A 완료
 
@@ -244,8 +244,8 @@ sudo apt install -y curl wget vim htop net-tools
 콘솔 > 컴퓨팅 > 사용자 스크립트 > 생성
 
 운영체제: Linux
-이름: web-server-init
-설명: 웹 서버 초기화 스크립트
+이름: shop-app-init
+설명: shop-app 배포 스크립트
 
 ```
 
@@ -267,34 +267,84 @@ apt-get update -y
 apt-get upgrade -y
 
 # 필수 패키지 설치
-apt-get install -y \\
-    nginx \\
-    python3 \\
-    python3-pip \\
-    python3-venv \\
-    git \\
-    curl \\
-    vim \\
+apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-venv \
+    git \
+    nginx \
+    curl \
+    vim \
     htop
 
-# Nginx 시작
-systemctl enable nginx
-systemctl start nginx
+# shop-app 다운로드
+cd /opt
+git clone https://github.com/weg-9000/gabia_gen2_HOL.git
+cd gabia_gen2_HOL/shop-app
 
-# 샘플 페이지 생성
-cat > /var/www/html/index.html << 'EOF'
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Lab Server</title>
-</head>
-<body>
-    <h1>Gabia Gen2 Lab Server</h1>
-    <p>Server initialized successfully!</p>
-    <p>Hostname: $(hostname)</p>
-</body>
-</html>
-EOF
+# 가상환경 생성 및 의존성 설치
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+
+# 환경 변수 설정 (개발 환경 - SQLite)
+cat > .env << 'ENVEOF'
+ENVIRONMENT=development
+DATABASE_URL=sqlite:///./shop.db
+HOST=0.0.0.0
+PORT=8000
+DEBUG=true
+ENVEOF
+
+# Systemd 서비스 등록
+cat > /etc/systemd/system/shop-app.service << 'SVCEOF'
+[Unit]
+Description=Gabia Shop App
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/opt/gabia_gen2_HOL/shop-app
+Environment="PATH=/opt/gabia_gen2_HOL/shop-app/venv/bin"
+ExecStart=/opt/gabia_gen2_HOL/shop-app/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+
+systemctl daemon-reload
+systemctl enable shop-app
+systemctl start shop-app
+
+# Nginx 리버스 프록시 설정
+cat > /etc/nginx/sites-available/shop-app << 'NGXEOF'
+server {
+    listen 80;
+    server_name _;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    location /health {
+        proxy_pass http://127.0.0.1:8000/health;
+    }
+
+    location /stats {
+        proxy_pass http://127.0.0.1:8000/stats;
+    }
+}
+NGXEOF
+
+ln -sf /etc/nginx/sites-available/shop-app /etc/nginx/sites-enabled/
+rm -f /etc/nginx/sites-enabled/default
+nginx -t && systemctl restart nginx
 
 echo "=== Script completed at $(date) ==="
 
@@ -321,15 +371,15 @@ VPC: 기본 VPC
 보안 그룹: default
 
 [사용자 스크립트]
-스크립트: web-server-init
-호스트명: web-server
+스크립트: shop-app-init
+호스트명: shop-server
 
 [로그인 방식]
 방식: SSH 키페어로 접속
 키페어: lab-keypair
 
 [이름]
-서버 이름: web-server
+서버 이름: shop-server
 
 ```
 
@@ -356,11 +406,11 @@ sudo cat /var/log/cloud-init-output.log | tail -50
 ### 4. 설치 결과 확인
 
 ```bash
+# shop-app 서비스 상태
+sudo systemctl status shop-app
+
 # Nginx 상태 확인
 sudo systemctl status nginx
-
-# Nginx 버전
-nginx -v
 
 # Python 버전
 python3 --version
@@ -368,11 +418,19 @@ python3 --version
 # 타임존 확인
 timedatectl
 
+# shop-app 파일 확인
+ls -la /opt/gabia_gen2_HOL/shop-app/
+
 ```
 
 출력 예시:
 
 ```
+# sudo systemctl status shop-app
+● shop-app.service - Gabia Shop App
+     Loaded: loaded (/etc/systemd/system/shop-app.service; enabled)
+     Active: active (running) since ...
+
 # timedatectl
                Local time: Sun 2026-01-25 14:30:00 KST
            Universal time: Sun 2026-01-25 05:30:00 UTC
@@ -380,32 +438,42 @@ timedatectl
 
 ```
 
-### 5. 웹 서버 테스트
+### 5. shop-app API 테스트
 
 브라우저 또는 터미널에서:
 
 ```bash
-# 로컬 테스트
-curl <http://localhost>
+# 헬스체크 (로컬)
+curl http://localhost/health
 
-# 외부에서 테스트 (내 PC)
-curl http://[공인IP]
+# 헬스체크 (외부 - 내 PC에서)
+curl http://[공인IP]/health
 
 ```
 
 출력:
 
-```html
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Lab Server</title>
-</head>
-<body>
-    <h1>Gabia Gen2 Lab Server</h1>
-    <p>Server initialized successfully!</p>
-</body>
-</html>
+```json
+{
+  "status": "healthy",
+  "service": "Gabia Shopping Mall API",
+  "version": "1.0.0",
+  "timestamp": "2026-01-25T14:30:00.000000",
+  "database": "connected"
+}
+```
+
+추가 API 테스트:
+
+```bash
+# 통계 정보
+curl http://[공인IP]/stats
+
+# 제품 목록 조회
+curl http://[공인IP]/api/v1/products
+
+# API 문서 (브라우저에서)
+http://[공인IP]/docs
 
 ```
 
@@ -424,7 +492,7 @@ curl http://[공인IP]
 ### 7. 스크립트 수정
 
 ```
-콘솔 > 컴퓨팅 > 사용자 스크립트 > web-server-init > 수정
+콘솔 > 컴퓨팅 > 사용자 스크립트 > shop-app-init > 수정
 
 ```
 
@@ -456,20 +524,25 @@ curl http://[공인IP]
 | 스크립트 미실행 | shebang 누락 | 첫 줄에 `#!/bin/bash` 추가 |
 | 패키지 설치 실패 | apt lock | `sudo rm /var/lib/apt/lists/lock` |
 | Nginx 접속 불가 | 보안 그룹 | 80포트 인바운드 규칙 추가 |
+| shop-app 시작 실패 | 가상환경 오류 | `source venv/bin/activate && pip install -r requirements.txt` |
+| API 응답 없음 | uvicorn 미시작 | `systemctl restart shop-app` |
+| /health 502 오류 | shop-app 미실행 | shop-app 서비스 상태 확인 후 재시작 |
 | 타임존 미적용 | 명령어 오류 | `timedatectl set-timezone Asia/Seoul` |
-| 로그 파일 없음 | 권한 문제 | 스크립트에 sudo 추가 |
+| git clone 실패 | 네트워크 문제 | DNS 설정 확인, 재시도 |
 
 ---
 
 ## 완료 체크리스트
 
 ```
-[ ] 사용자 스크립트 생성 완료
-[ ] 스크립트 적용 서버 생성
+[ ] 사용자 스크립트 (shop-app-init) 생성 완료
+[ ] 스크립트 적용 서버 (shop-server) 생성
 [ ] SSH 접속 성공
 [ ] 스크립트 실행 로그 확인
-[ ] Nginx 정상 동작 확인
-[ ] 웹 페이지 접속 테스트
+[ ] shop-app 서비스 정상 동작 확인
+[ ] Nginx 리버스 프록시 동작 확인
+[ ] /health 엔드포인트 응답 확인
+[ ] /api/v1/products API 호출 테스트
 [ ] 보안 그룹 HTTP 허용 (선택)
 
 ```

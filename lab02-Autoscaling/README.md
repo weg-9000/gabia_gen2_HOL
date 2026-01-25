@@ -4,11 +4,11 @@
 
 - 오토스케일링 그룹 생성 및 관리
 - 스케줄 기반 스케일링 예약 설정
-- 로드밸런서 연결 및 트래픽 분산 확인
+- 로드밸런서 연결 및 shop-app 트래픽 분산 확인
 
-**소요 시간**: 40분
+**소요 시간**: 45분
 **난이도**: 중급
-**선행 조건**: Lab 01-A 완료
+**선행 조건**: Lab 01-B 완료 (shop-app-init 스크립트 생성됨)
 
 ---
 
@@ -68,11 +68,16 @@ vCore: 2
 Memory: 8GB
 루트 스토리지: 50GB
 
+[사용자 스크립트]
+스크립트: shop-app-init (Lab 01-B에서 생성)
+
 [로그인 방식]
 방식: SSH 키페어로 접속
 키페어: lab-keypair
 
 ```
+
+> **중요**: Lab 01-B에서 생성한 `shop-app-init` 스크립트를 선택해야 오토스케일링으로 생성되는 모든 서버에 shop-app이 자동 배포됩니다.
 
 ### 3. 네트워크 설정
 
@@ -103,7 +108,7 @@ VPC: 기본 VPC
 ### 5. 스케일링 그룹 정보
 
 ```
-스케일링 그룹 이름: lab-scaling-group
+스케일링 그룹 이름: shop-scaling-group
 구동 서버 수: 2
 
 ```
@@ -139,7 +144,7 @@ VPC: 기본 VPC
 ### 7. 생성 완료 확인
 
 ```
-콘솔 > 컴퓨팅 > 오토스케일링 > lab-scaling-group
+콘솔 > 컴퓨팅 > 오토스케일링 > shop-scaling-group
 
 ```
 
@@ -161,55 +166,44 @@ VPC: 기본 VPC
 - 서버 이름: AS-Server-yymmddhhmmss_0, AS-Server-yymmddhhmmss_1
 - 프리픽스 'AS'로 오토스케일링 서버 구분
 
-### 9. 서버 접속 및 웹 서버 설치
+### 9. shop-app 자동 배포 확인
 
-각 서버에 SSH 접속하여 웹 서버 설치:
+> **참고**: `shop-app-init` 사용자 스크립트가 지정되어 있으므로, 서버 생성 시 shop-app이 자동으로 배포됩니다. 수동 설치가 필요하지 않습니다.
+
+서버에 SSH 접속하여 배포 상태 확인:
 
 ```bash
 # 서버 1 접속
 ssh -i lab-keypair.pem ubuntu@[서버1 공인IP]
 
-# Nginx 설치
-sudo apt update
-sudo apt install -y nginx
+# shop-app 서비스 상태 확인
+sudo systemctl status shop-app
 
-# 서버 식별용 페이지 생성
-HOSTNAME=$(hostname)
-echo "<h1>Server: $HOSTNAME</h1>" | sudo tee /var/www/html/index.html
+# Nginx 상태 확인
+sudo systemctl status nginx
 
-# Nginx 시작
-sudo systemctl enable nginx
-sudo systemctl start nginx
+# 스크립트 실행 로그 확인
+cat /var/log/user-script.log
 
 exit
 
 ```
 
-서버 2도 동일하게 설정:
+출력 예시:
 
-```bash
-ssh -i lab-keypair.pem ubuntu@[서버2 공인IP]
-
-sudo apt update
-sudo apt install -y nginx
-
-HOSTNAME=$(hostname)
-echo "<h1>Server: $HOSTNAME</h1>" | sudo tee /var/www/html/index.html
-
-sudo systemctl enable nginx
-sudo systemctl start nginx
-
-exit
+```
+● shop-app.service - Gabia Shop App
+     Loaded: loaded (/etc/systemd/system/shop-app.service; enabled)
+     Active: active (running) since ...
 
 ```
 
-### 10. 로드밸런서 테스트
+### 10. 로드밸런서 테스트 (shop-app API)
 
 ```bash
-# 여러 번 요청하여 분산 확인
+# 헬스체크 분산 확인
 for i in {1..10}; do
-    curl -s http://[로드밸런서 공인IP]
-    echo ""
+    curl -s http://[로드밸런서 공인IP]/health | jq '.timestamp'
     sleep 1
 done
 
@@ -218,11 +212,27 @@ done
 출력 예시:
 
 ```
-<h1>Server: AS-Server-260125140000_0</h1>
-<h1>Server: AS-Server-260125140000_1</h1>
-<h1>Server: AS-Server-260125140000_0</h1>
-<h1>Server: AS-Server-260125140000_1</h1>
+"2026-01-25T14:30:00.123456"
+"2026-01-25T14:30:01.234567"
+"2026-01-25T14:30:02.345678"
 ...
+```
+
+추가 API 테스트:
+
+```bash
+# 통계 정보
+curl http://[로드밸런서 공인IP]/stats
+
+# 제품 목록 조회
+curl http://[로드밸런서 공인IP]/api/v1/products
+
+# 호스트명으로 분산 확인 (서버별 다른 응답)
+for i in {1..6}; do
+    echo "Request $i:"
+    curl -s http://[로드밸런서 공인IP]/health | jq '{status, service}'
+    sleep 1
+done
 
 ```
 
@@ -233,7 +243,7 @@ done
 ### 예약 추가
 
 ```
-콘솔 > 오토스케일링 > lab-scaling-group > 예약 탭 > 예약 추가
+콘솔 > 오토스케일링 > shop-scaling-group > 예약 탭 > 예약 추가
 
 예약 이름: weekend-minimum
 시작 시간: 00:00
@@ -245,7 +255,7 @@ done
 ### 구동 서버 수 수동 변경
 
 ```
-콘솔 > 오토스케일링 > lab-scaling-group > 구동 서버 수 변경
+콘솔 > 오토스케일링 > shop-scaling-group > 구동 서버 수 변경
 
 구동 서버 수: 3
 
@@ -256,7 +266,7 @@ done
 ### 스케일링 그룹 중지
 
 ```
-콘솔 > 오토스케일링 > lab-scaling-group > 중지
+콘솔 > 오토스케일링 > shop-scaling-group > 중지
 
 ```
 
@@ -267,7 +277,7 @@ done
 ### 스케일링 그룹 시작
 
 ```
-콘솔 > 오토스케일링 > lab-scaling-group > 시작
+콘솔 > 오토스케일링 > shop-scaling-group > 시작
 
 ```
 
@@ -277,7 +287,7 @@ done
 ### 스케일링 그룹 삭제
 
 ```
-콘솔 > 오토스케일링 > lab-scaling-group > 삭제
+콘솔 > 오토스케일링 > shop-scaling-group > 삭제
 
 ```
 
@@ -300,7 +310,7 @@ done
 ## 모니터링
 
 ```
-콘솔 > 오토스케일링 > lab-scaling-group > 모니터링 탭
+콘솔 > 오토스케일링 > shop-scaling-group > 모니터링 탭
 
 ```
 
@@ -349,12 +359,14 @@ done
 [ ] 리스너 생성 완료
 [ ] 오토스케일링 그룹 생성 완료
 [ ] 서버 템플릿 설정 (Ubuntu, 2vCore, 8GB)
+[ ] 사용자 스크립트 연결 (shop-app-init)
 [ ] 네트워크 설정 (VPC, 서브넷, 보안 그룹)
 [ ] 로드밸런서 연결 완료
 [ ] 예약 설정 완료 (업무시간/야간)
 [ ] 생성된 서버 확인 (AS- 프리픽스)
-[ ] 각 서버 웹 서버 설치
-[ ] 로드밸런서 분산 테스트
+[ ] shop-app 자동 배포 확인
+[ ] /health API 로드밸런서 분산 테스트
+[ ] /api/v1/products API 호출 테스트
 [ ] 구동 서버 수 변경 테스트
 [ ] 모니터링 확인
 
@@ -370,10 +382,10 @@ Lab 완료 후 비용 절감을 위해 리소스 삭제:
 
 ```bash
 # 구동 서버 수 0으로 변경
-콘솔 > 오토스케일링 > lab-scaling-group > 구동 서버 수 변경 > 0
+콘솔 > 오토스케일링 > shop-scaling-group > 구동 서버 수 변경 > 0
 
 # 상태가 '대기'로 변경 확인 후 삭제
-콘솔 > 오토스케일링 > lab-scaling-group > 삭제
+콘솔 > 오토스케일링 > shop-scaling-group > 삭제
 
 ```
 
@@ -403,9 +415,11 @@ Lab 완료 후 비용 절감을 위해 리소스 삭제:
 ### 4. 사용자 스크립트 삭제 (선택)
 
 ```
-콘솔 > 컴퓨팅 > 사용자 스크립트 > web-server-init > 삭제
+콘솔 > 컴퓨팅 > 사용자 스크립트 > shop-app-init > 삭제
 
 ```
+
+> **주의**: 다른 Lab에서 이 스크립트를 사용할 수 있으므로 삭제하지 않는 것을 권장합니다.
 
 ### 5. SSH 키페어 삭제 (선택)
 
@@ -432,14 +446,18 @@ Lab 완료 후 비용 절감을 위해 리소스 삭제:
     ┌──────────┐  ┌──────────┐  ┌──────────┐
     │ AS-Server│  │ AS-Server│  │ AS-Server│
     │    _0    │  │    _1    │  │    _2    │
+    │ shop-app │  │ shop-app │  │ shop-app │
     └──────────┘  └──────────┘  └──────────┘
           │             │             │
           └─────────────┴─────────────┘
                         │
               ┌─────────────────┐
               │ 오토스케일링 그룹 │
-              │ (lab-scaling-   │
+              │ (shop-scaling-  │
               │     group)      │
+              │                 │
+              │ [shop-app-init] │
+              │  사용자 스크립트  │
               └─────────────────┘
                         │
               ┌─────────────────┐
@@ -451,6 +469,17 @@ Lab 완료 후 비용 절감을 위해 리소스 삭제:
               └─────────────────┘
 
 ```
+
+### shop-app 엔드포인트
+
+| 엔드포인트 | 설명 |
+|-----------|------|
+| `/health` | 헬스체크 (LB 상태 확인용) |
+| `/stats` | 통계 정보 |
+| `/api/v1/products` | 제품 목록 |
+| `/api/v1/categories` | 카테고리 목록 |
+| `/api/v1/orders` | 주문 목록 |
+| `/docs` | API 문서 (Swagger UI) |
 
 ---
 
@@ -624,11 +653,11 @@ Lab 01-A, Lab 01-B, Lab 02 실습이 완료되었습니다.
 | Lab | 내용 |
 | --- | --- |
 | Lab 01-A | SSH 키페어 생성, 서버 생성/관리, SSH 접속 |
-| Lab 01-B | 사용자 스크립트 생성, 서버 자동 초기화 |
-| Lab 02 | 오토스케일링 그룹, 스케줄 예약, 로드밸런서 연결 |
+| Lab 01-B | shop-app 배포 스크립트 생성, 서버 자동 배포 |
+| Lab 02 | 오토스케일링 그룹, 스케줄 예약, shop-app 분산 배포 |
 
 ### 다음 단계
 
-- Lab 03: 블록 스토리지 및 PostgreSQL
-- Lab 04: NAS 스토리지
+- Lab 03: 블록 스토리지 및 PostgreSQL (shop-app DB 연동)
+- Lab 04: NAS 스토리지 (shop-app 이미지 저장)
 - Lab 05: VPC 및 네트워크 구성

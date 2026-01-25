@@ -5,9 +5,11 @@
 - 블록 스토리지 생성 및 서버 연결
 - 파일시스템 포맷 및 마운트
 - PostgreSQL 데이터 디렉토리 분리 구성
+- **shop-app과 PostgreSQL 연동**
 
-**소요 시간**: 20분  
+**소요 시간**: 30분
 **난이도**: 초급
+**선행 조건**: Lab 01-B 완료 (shop-server에 shop-app 배포됨)
 
 ## 실습 단계
 
@@ -127,6 +129,8 @@ sudo -u postgres psql
 CREATE DATABASE shopdb;
 CREATE USER shopuser WITH PASSWORD 'shoppass';
 GRANT ALL PRIVILEGES ON DATABASE shopdb TO shopuser;
+\c shopdb
+GRANT ALL ON SCHEMA public TO shopuser;
 \q
 ```
 
@@ -138,6 +142,105 @@ df -h /var/lib/postgresql
 
 # PostgreSQL 상태
 sudo systemctl status postgresql
+```
+
+---
+
+## shop-app PostgreSQL 연동
+
+### 9. 테이블 및 샘플 데이터 초기화
+
+shop-app의 초기화 스크립트로 테이블 생성 및 샘플 데이터 삽입:
+
+```bash
+# shop-app 디렉토리로 이동
+cd /opt/gabia_gen2_HOL/shop-app
+
+# 데이터베이스 스키마 및 샘플 데이터 초기화
+sudo -u postgres psql -d shopdb -f docker/init-db.sql
+```
+
+초기화 확인:
+
+```bash
+sudo -u postgres psql -d shopdb -c "SELECT 'Categories:', COUNT(*) FROM categories;"
+sudo -u postgres psql -d shopdb -c "SELECT 'Products:', COUNT(*) FROM products;"
+sudo -u postgres psql -d shopdb -c "SELECT 'Orders:', COUNT(*) FROM orders;"
+```
+
+출력 예시:
+
+```
+ ?column?   | count
+------------+-------
+ Categories:|     5
+
+ ?column?  | count
+-----------+-------
+ Products: |    20
+
+ ?column? | count
+----------+-------
+ Orders:  |     4
+```
+
+### 10. shop-app 환경변수 수정
+
+개발 환경(SQLite)에서 운영 환경(PostgreSQL)으로 변경:
+
+```bash
+cd /opt/gabia_gen2_HOL/shop-app
+
+# 기존 .env 백업
+sudo cp .env .env.bak
+
+# PostgreSQL 연결 설정으로 변경
+sudo tee .env << 'EOF'
+ENVIRONMENT=production
+DATABASE_URL=postgresql://shopuser:shoppass@localhost:5432/shopdb
+HOST=0.0.0.0
+PORT=8000
+DEBUG=false
+POSTGRES_USER=shopuser
+POSTGRES_PASSWORD=shoppass
+POSTGRES_DB=shopdb
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+EOF
+```
+
+### 11. shop-app 서비스 재시작
+
+```bash
+sudo systemctl restart shop-app
+
+# 상태 확인
+sudo systemctl status shop-app
+```
+
+### 12. PostgreSQL 연동 확인
+
+```bash
+# 헬스체크 (database: connected 확인)
+curl http://localhost/health | jq
+
+# 통계 정보 (DB에서 데이터 조회)
+curl http://localhost/stats | jq
+
+# 제품 목록 (PostgreSQL에서 조회)
+curl http://localhost/api/v1/products | jq '.items[0]'
+```
+
+출력 예시:
+
+```json
+{
+  "status": "healthy",
+  "service": "Gabia Shopping Mall API",
+  "version": "1.0.0",
+  "timestamp": "2026-01-25T14:30:00.000000",
+  "database": "connected"
+}
 ```
 
 ---
@@ -179,6 +282,10 @@ sudo systemctl start postgresql
 | 서버 연결 불가 | 서버 상태 이상 | 서버 운영 중/정지됨 확인 |
 | 용량 확장 불가 | NFS+서버 연결 | 서버 연결 해제 후 확장 |
 | 스토리지 삭제 불가 | 스냅샷 존재 | 스냅샷 먼저 삭제 |
+| shop-app DB 연결 실패 | 환경변수 오류 | `.env` 파일의 DATABASE_URL 확인 |
+| database: disconnected | PostgreSQL 미실행 | `systemctl start postgresql` |
+| permission denied for schema | 권한 부족 | `GRANT ALL ON SCHEMA public TO shopuser;` 실행 |
+| 테이블 없음 오류 | 스키마 미초기화 | `psql -d shopdb -f docker/init-db.sql` 재실행 |
 
 ---
 
@@ -190,7 +297,12 @@ sudo systemctl start postgresql
 [ ] 파일시스템 포맷 (ext4)
 [ ] 마운트 및 fstab 등록
 [ ] PostgreSQL 설치 및 데이터 디렉토리 설정
-[ ] 데이터베이스 생성
+[ ] 데이터베이스 및 사용자 생성
+[ ] shop-app 스키마 초기화 (init-db.sql)
+[ ] shop-app 환경변수 PostgreSQL로 변경
+[ ] shop-app 서비스 재시작
+[ ] /health API에서 database: connected 확인
+[ ] /stats API에서 DB 통계 조회 확인
 [ ] 스냅샷 생성 (선택)
 ```
 

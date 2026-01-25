@@ -5,9 +5,11 @@
 - NAS 개념 및 블록 스토리지와의 차이 이해
 - NFS/CIFS 프로토콜을 통한 파일 공유 구현
 - 여러 서버에서 동시 파일 접근 구성
+- **shop-app 이미지 저장 디렉토리 NAS 연동**
 
-**소요 시간**: 25분  
+**소요 시간**: 30분
 **난이도**: 중급
+**선행 조건**: Lab 01-B 완료 (shop-server에 shop-app 배포됨)
 
 ## 블록 스토리지 vs NAS
 
@@ -115,6 +117,119 @@ echo "from server1" | sudo tee /mnt/nas/shared.txt
 cat /mnt/nas/shared.txt
 # 출력: from server1
 ```
+
+---
+
+## shop-app 이미지 저장 연동
+
+### 8. shop-app 이미지 디렉토리 생성
+
+NAS에 shop-app의 제품 이미지를 저장할 디렉토리 생성:
+
+```bash
+# 이미지 저장 디렉토리 생성
+sudo mkdir -p /mnt/nas/shop-images
+
+# 권한 설정
+sudo chmod 755 /mnt/nas/shop-images
+```
+
+### 9. shop-app static 디렉토리 심볼릭 링크
+
+shop-app의 이미지 디렉토리를 NAS로 연결:
+
+```bash
+# shop-app 디렉토리로 이동
+cd /opt/gabia_gen2_HOL/shop-app
+
+# 기존 static/images 디렉토리 백업 (있는 경우)
+sudo mv static/images static/images.bak 2>/dev/null || true
+
+# static 디렉토리 생성 (없는 경우)
+sudo mkdir -p static
+
+# NAS 이미지 디렉토리 심볼릭 링크 생성
+sudo ln -sf /mnt/nas/shop-images static/images
+
+# 확인
+ls -la static/
+```
+
+출력 예시:
+
+```
+lrwxrwxrwx 1 root root 20 Jan 25 14:30 images -> /mnt/nas/shop-images
+```
+
+### 10. shop-app 환경변수 업데이트
+
+이미지 업로드 경로 설정 업데이트:
+
+```bash
+cd /opt/gabia_gen2_HOL/shop-app
+
+# 환경변수에 UPLOAD_DIR 추가
+echo "UPLOAD_DIR=/mnt/nas/shop-images" | sudo tee -a .env
+
+# 또는 전체 .env 재작성
+sudo tee .env << 'EOF'
+ENVIRONMENT=production
+DATABASE_URL=postgresql://shopuser:shoppass@localhost:5432/shopdb
+HOST=0.0.0.0
+PORT=8000
+DEBUG=false
+POSTGRES_USER=shopuser
+POSTGRES_PASSWORD=shoppass
+POSTGRES_DB=shopdb
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+UPLOAD_DIR=/mnt/nas/shop-images
+MAX_UPLOAD_SIZE=5242880
+EOF
+```
+
+### 11. shop-app 서비스 재시작
+
+```bash
+sudo systemctl restart shop-app
+
+# 상태 확인
+sudo systemctl status shop-app
+```
+
+### 12. 이미지 저장 테스트
+
+```bash
+# 테스트 이미지 생성
+echo "test image" | sudo tee /mnt/nas/shop-images/test-product.jpg
+
+# 확인
+ls -la /mnt/nas/shop-images/
+
+# shop-app static에서 확인
+ls -la /opt/gabia_gen2_HOL/shop-app/static/images/
+```
+
+### 13. 오토스케일링 연동 (Lab 02 완료 시)
+
+오토스케일링 서버들도 동일한 NAS를 마운트하면 이미지 공유 가능:
+
+```
+오토스케일링 서버 1  ─┬─> /mnt/nas/shop-images (NAS)
+오토스케일링 서버 2  ─┤
+오토스케일링 서버 3  ─┘
+```
+
+각 서버에서 동일한 마운트 명령 실행:
+
+```bash
+sudo apt install -y nfs-common
+sudo mkdir -p /mnt/nas
+sudo mount -t nfs4 10.0.x.x:/share-xxxxx /mnt/nas
+sudo ln -sf /mnt/nas/shop-images /opt/gabia_gen2_HOL/shop-app/static/images
+```
+
+> **Tip**: 오토스케일링의 사용자 스크립트(shop-app-init)에 NAS 마운트 명령을 추가하면 자동화됩니다.
 
 ---
 
@@ -226,6 +341,9 @@ sudo mount -t cifs //10.0.x.x/share-xxxxx /mnt/nas \
 | 서브넷 선택 불가 | IP 부족 | 서브넷에 IP 2개 이상 확보 |
 | NAS 삭제 불가 | 스냅샷 존재 | 스냅샷 먼저 삭제 |
 | CIFS 연결 실패 | 비밀번호 오류 | 계정 비밀번호 확인/변경 |
+| 심볼릭 링크 실패 | 경로 오류 | 절대 경로 사용, 디렉토리 존재 확인 |
+| 이미지 업로드 실패 | 권한 문제 | `chmod 755 /mnt/nas/shop-images` |
+| shop-app 이미지 미표시 | 링크 깨짐 | NAS 마운트 상태 및 심볼릭 링크 확인 |
 
 ---
 
@@ -237,6 +355,11 @@ sudo mount -t cifs //10.0.x.x/share-xxxxx /mnt/nas \
 [ ] 서버에서 마운트
 [ ] fstab 영구 마운트 등록
 [ ] 읽기/쓰기 테스트
+[ ] shop-images 디렉토리 생성
+[ ] shop-app static/images 심볼릭 링크
+[ ] shop-app 환경변수 UPLOAD_DIR 설정
+[ ] shop-app 서비스 재시작
+[ ] 이미지 저장 테스트
 [ ] 스냅샷 생성 (선택)
 ```
 
