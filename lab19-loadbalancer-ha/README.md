@@ -1,873 +1,879 @@
 # Lab 19: 로드밸런서 고가용성 (HA) 구성
 
-## 목차
-1. [학습 목표](#학습-목표)
-2. [사전 준비](#사전-준비)
-3. [배경 지식](#배경-지식)
-4. [실습 단계](#실습-단계)
-5. [심화 이해](#심화-이해)
-6. [트러블슈팅](#트러블슈팅)
-7. [다음 단계](#다음-단계)
-8. [리소스 정리](#리소스-정리)
-
----
-
 ## 학습 목표
 
-이 Lab을 완료하면 다음을 수행할 수 있습니다:
+- 로드밸런서와 오토스케일링 그룹 연결
+- 헬스 체크 기반 자동 장애 조치
+- 트래픽 분산 및 Failover 테스트
 
-- 로드밸런서의 고가용성 아키텍처 개념 이해
-- Active-Passive 및 Active-Active 구성 방식 비교
-- 헬스체크와 자동 장애 조치(Failover) 설정
-- 다중 가용 영역(Multi-AZ) 배포 구성
-- Kubernetes Ingress와 로드밸런서 통합
-- 실시간 트래픽 분산 및 세션 유지 설정
-
-**소요 시간**: 45-60분
-**난이도**: 중급-고급
-
----
+**소요 시간**: 30분
+**난이도**: 중급
 
 ## 사전 준비
 
-### 필수 요구사항
-- [x] Lab 06 (VPC/Subnet) 완료 - 네트워크 기본 구성
-- [x] Lab 08 (Public IP) 완료 - 외부 접근 설정
-- [x] Lab 09 (Security Group) 완료 - 보안 그룹 이해
-- [x] Lab 12 (K8s Cluster) 완료 - Kubernetes 클러스터 운영 중
-- [x] Lab 13 (Deployment) 완료 - 애플리케이션 배포 이해
+- Lab 02 완료 (오토스케일링)
+- Lab 10 완료 (로드밸런서 기초)
 
-### 리소스 요구사항
-| 리소스 | 최소 사양 | 권장 사양 |
-|--------|-----------|-----------|
-| 로드밸런서 | Standard | High Performance |
-| 백엔드 서버 | 2대 이상 | 4대 이상 |
-| 가용 영역 | 2개 | 3개 |
-| 헬스체크 | 기본 | 고급 (커스텀) |
+## 정책
 
-### 환경 확인
-```bash
-# kubectl 설치 및 클러스터 연결 확인
-kubectl cluster-info
-
-# 현재 노드 확인
-kubectl get nodes -o wide
-
-# 기존 서비스 확인
-kubectl get svc -A
-```
+| 항목 | 정책 |
+| --- | --- |
+| LB 연결 조건 | 동일 서브넷에 생성된 LB만 선택 가능 |
+| 리스너 연결 | 최대 3개 (동일 LB의 리스너) |
+| 서버 자동 관리 | 오토스케일링 서버는 리스너 멤버로 자동 추가/삭제 |
+| 고정 IP | 외부 고정 IP 필요 시 LB에 고정 공인 IP 권장 |
+| 구동 서버 수 | 0~10대 |
 
 ---
 
-## 배경 지식
-
-### 고가용성(HA)이란?
-
-고가용성(High Availability)은 시스템이 장애 상황에서도 지속적으로 서비스를 제공할 수 있는 능력을 의미합니다.
+## 목표 아키텍처
 
 ```
-+---------------------------------------------------------------------+
-|                     고가용성 로드밸런서 아키텍처                       |
-+---------------------------------------------------------------------+
-|                                                                     |
-|     +------------------+                                            |
-|     |     클라이언트    |                                            |
-|     +--------+---------+                                            |
-|              |                                                      |
-|              v                                                      |
-|     +------------------+                                            |
-|     |   DNS / GSLB     |  <-- 글로벌 로드밸런싱                       |
-|     +--------+---------+                                            |
-|              |                                                      |
-|      +-------+-------+                                              |
-|      v               v                                              |
-| +---------+    +---------+                                          |
-| |   LB    |<-->|   LB    |  <-- Active-Standby 또는 Active-Active    |
-| | Primary |    |Secondary|                                          |
-| +----+----+    +----+----+                                          |
-|      |              |                                               |
-|      +------+-------+                                               |
-|             |                                                       |
-|     +-------+-------+                                               |
-|     v       v       v                                               |
-| +------++------++------+                                            |
-| |Server||Server||Server|  <-- 백엔드 서버 풀                          |
-| |  #1  ||  #2  ||  #3  |                                            |
-| +------++------++------+                                            |
-|                                                                     |
-|   Zone A    Zone B    Zone C   <-- 다중 가용 영역 배포                 |
-|                                                                     |
-+---------------------------------------------------------------------+
-```
-
-### 가용성 수준 (SLA)
-
-| 가용성 | 연간 다운타임 | 월간 다운타임 | 사용 사례 |
-|--------|--------------|--------------|-----------|
-| 99% | 3.65일 | 7.2시간 | 개발/테스트 환경 |
-| 99.9% | 8.76시간 | 43.8분 | 일반 비즈니스 |
-| 99.95% | 4.38시간 | 21.9분 | 중요 서비스 |
-| 99.99% | 52.6분 | 4.38분 | 미션 크리티컬 |
-| 99.999% | 5.26분 | 26초 | 금융/의료 |
-
-### HA 구성 방식 비교
+                         인터넷
+                            │
+                            ▼
+                    ┌───────────────┐
+                    │   공인 IP      │
+                    │  (고정 IP)     │
+                    └───────┬───────┘
+                            │
+                    ┌───────▼───────┐
+                    │  로드밸런서    │
+                    │   shop-lb     │
+                    │               │
+                    │ ┌───────────┐ │
+                    │ │ Listener  │ │
+                    │ │ HTTP:80   │ │
+                    │ └─────┬─────┘ │
+                    └───────┼───────┘
+                            │
+                    ┌───────▼───────┐
+                    │ 오토스케일링   │
+                    │   그룹        │
+                    │ (자동 등록)   │
+                    └───────┬───────┘
+                            │
+        ┌───────────────────┼───────────────────┐
+        │                   │                   │
+        ▼                   ▼                   ▼
+  ┌───────────┐       ┌───────────┐       ┌───────────┐
+  │AS-web-01  │       │AS-web-02  │       │AS-web-03  │
+  │ (자동생성) │       │ (자동생성) │       │ (자동생성) │
+  └───────────┘       └───────────┘       └───────────┘
 
 ```
-+---------------------------------------------------------------------+
-|                     HA 구성 방식 비교                                 |
-+---------------------------------------------------------------------+
-|                                                                     |
-|  [Active-Passive (Active-Standby)]                                  |
-|  +----------------------------------------------------------+       |
-|  |   +-----------+         +-----------+                    |       |
-|  |   |  Active   | ------> |  Passive  |                    |       |
-|  |   |   (LB1)   | Heartbeat|   (LB2)   |                    |       |
-|  |   +-----+-----+         +-----+-----+                    |       |
-|  |         |                     | (대기 상태)               |       |
-|  |   +-----------+         +-----------+                    |       |
-|  |   |  Backend  |         |  Backend  |                    |       |
-|  |   |   Pool    |         |   Pool    |                    |       |
-|  |   +-----------+         +-----------+                    |       |
-|  |   장점: 간단한 구성, 비용 효율적                            |       |
-|  |   단점: 리소스 낭비, 장애 시 일시적 중단                    |       |
-|  +----------------------------------------------------------+       |
-|                                                                     |
-|  [Active-Active]                                                    |
-|  +----------------------------------------------------------+       |
-|  |        +----------------------+                          |       |
-|  |        |        DNS           |                          |       |
-|  |        +----------+-----------+                          |       |
-|  |        +----------+----------+                           |       |
-|  |        v          v          v                           |       |
-|  |   +--------+ +--------+ +--------+                       |       |
-|  |   |  LB1   | |  LB2   | |  LB3   |                       |       |
-|  |   | Active | | Active | | Active |                       |       |
-|  |   +----+---+ +----+---+ +----+---+                       |       |
-|  |        +----------+----------+                           |       |
-|  |                   v                                      |       |
-|  |            +-----------+                                 |       |
-|  |            |  Backend  |                                 |       |
-|  |            |   Pool    |                                 |       |
-|  |            +-----------+                                 |       |
-|  |   장점: 처리량 분산, 무중단 서비스                          |       |
-|  |   단점: 복잡한 구성, 세션 관리 필요                        |       |
-|  +----------------------------------------------------------+       |
-+---------------------------------------------------------------------+
-```
-
-### 헬스체크 메커니즘
-
-```
-+---------------------------------------------------------------------+
-|                      헬스체크 프로세스                                 |
-+---------------------------------------------------------------------+
-|  +--------------------------------------------------------------+   |
-|  |                     Load Balancer                             |   |
-|  |  +--------------------------------------------------------+   |   |
-|  |  |              Health Check Controller                    |   |   |
-|  |  |  [설정 파라미터]                                          |   |   |
-|  |  |  - Protocol: HTTP/HTTPS/TCP                              |   |   |
-|  |  |  - Port: 80, 443, 8080...                                |   |   |
-|  |  |  - Path: /health, /ready                                 |   |   |
-|  |  |  - Interval: 10초                                         |   |   |
-|  |  |  - Timeout: 5초                                           |   |   |
-|  |  |  - Healthy Threshold: 2회                                 |   |   |
-|  |  |  - Unhealthy Threshold: 3회                               |   |   |
-|  |  +--------------------------------------------------------+   |   |
-|  +--------------------------------------------------------------+   |
-|         +-----------------+-----------------+                      |
-|         v                 v                 v                      |
-|    +---------+       +---------+       +---------+                 |
-|    | Server1 |       | Server2 |       | Server3 |                 |
-|    | [정상]   |       | [정상]   |       | [비정상] |                 |
-|    | HTTP 200|       | HTTP 200|       | Timeout |                 |
-|    +---------+       +---------+       +---------+                 |
-|   [트래픽 수신]       [트래픽 수신]       [트래픽 제외]                |
-+---------------------------------------------------------------------+
-```
-
-### 로드밸런싱 알고리즘
-
-| 알고리즘 | 설명 | 사용 사례 |
-|----------|------|-----------|
-| Round Robin | 순차적 분배 | 동일 사양 서버 |
-| Weighted Round Robin | 가중치 기반 분배 | 다양한 사양 서버 |
-| Least Connections | 연결 수 최소 서버 선택 | 세션 기반 애플리케이션 |
-| IP Hash | 클라이언트 IP 기반 | 세션 유지 필요 시 |
-| Least Response Time | 응답 시간 기반 | 성능 최적화 |
 
 ---
 
 ## 실습 단계
 
-### 1단계: 백엔드 애플리케이션 배포
+### 1. 로드밸런서 생성
 
-HA 로드밸런서 테스트를 위한 샘플 애플리케이션을 배포합니다.
+```
+콘솔 > 네트워크 > 로드밸런서 > 생성
 
-```yaml
-# ha-demo-deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ha-demo-app
-  namespace: default
-  labels:
-    app: ha-demo
-spec:
-  replicas: 4
-  selector:
-    matchLabels:
-      app: ha-demo
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
-  template:
-    metadata:
-      labels:
-        app: ha-demo
-        version: v1
-    spec:
-      affinity:
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 100
-            podAffinityTerm:
-              labelSelector:
-                matchExpressions:
-                - key: app
-                  operator: In
-                  values:
-                  - ha-demo
-              topologyKey: kubernetes.io/hostname
-      containers:
-      - name: nginx
-        image: nginx:1.24-alpine
-        ports:
-        - containerPort: 80
-          name: http
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-          limits:
-            cpu: 200m
-            memory: 256Mi
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 80
-          initialDelaySeconds: 10
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
-        readinessProbe:
-          httpGet:
-            path: /ready
-            port: 80
-          initialDelaySeconds: 5
-          periodSeconds: 5
-          timeoutSeconds: 3
-          failureThreshold: 3
-        env:
-        - name: POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: NODE_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.nodeName
-        volumeMounts:
-        - name: nginx-config
-          mountPath: /etc/nginx/conf.d
-      volumes:
-      - name: nginx-config
-        configMap:
-          name: ha-demo-nginx-config
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ha-demo-nginx-config
-  namespace: default
-data:
-  default.conf: |
-    server {
-        listen 80;
-        server_name localhost;
+이름: shop-ha-lb
+VPC: shop-vpc
+서브넷: shop-web-subnet
 
-        location / {
-            default_type application/json;
-            return 200 "{\"status\":\"ok\",\"pod\":\"$hostname\",\"timestamp\":\"$time_iso8601\"}";
-        }
-
-        location /health {
-            access_log off;
-            return 200 "healthy";
-            add_header Content-Type text/plain;
-        }
-
-        location /ready {
-            access_log off;
-            return 200 "ready";
-            add_header Content-Type text/plain;
-        }
-
-        location /status {
-            stub_status on;
-            access_log off;
-        }
-    }
 ```
 
-배포 명령:
-```bash
-# ConfigMap과 Deployment 배포
-kubectl apply -f ha-demo-deployment.yaml
+### 2. 공인 IP 할당 (고정)
 
-# 배포 상태 확인
-kubectl get pods -l app=ha-demo -o wide
+```
+콘솔 > 로드밸런서 > shop-ha-lb > 공인 IP 할당
 
-# Pod 분산 배포 확인
-kubectl get pods -l app=ha-demo -o custom-columns=\
-NAME:.metadata.name,NODE:.spec.nodeName,IP:.status.podIP,STATUS:.status.phase
+할당 방식: 기존 IP 선택 (고정 IP 권장)
+
 ```
 
-### 2단계: LoadBalancer 서비스 생성
+고정 IP가 없으면:
 
-```yaml
-# ha-loadbalancer-service.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: ha-demo-lb
-  namespace: default
-  labels:
-    app: ha-demo
-  annotations:
-    service.beta.kubernetes.io/gabia-load-balancer-type: "external"
-    service.beta.kubernetes.io/gabia-load-balancer-algorithm: "round-robin"
-    service.beta.kubernetes.io/gabia-load-balancer-health-check-protocol: "HTTP"
-    service.beta.kubernetes.io/gabia-load-balancer-health-check-path: "/health"
-    service.beta.kubernetes.io/gabia-load-balancer-health-check-interval: "10"
-    service.beta.kubernetes.io/gabia-load-balancer-health-check-timeout: "5"
-    service.beta.kubernetes.io/gabia-load-balancer-healthy-threshold: "2"
-    service.beta.kubernetes.io/gabia-load-balancer-unhealthy-threshold: "3"
-spec:
-  type: LoadBalancer
-  selector:
-    app: ha-demo
-  ports:
-  - name: http
-    port: 80
-    targetPort: 80
-    protocol: TCP
-  externalTrafficPolicy: Local
-  sessionAffinity: ClientIP
-  sessionAffinityConfig:
-    clientIP:
-      timeoutSeconds: 10800
+```
+콘솔 > 네트워크 > 공인 IP > 생성
+
+이름: shop-lb-ip
+용도: 로드밸런서용
+
 ```
 
-서비스 배포:
-```bash
-kubectl apply -f ha-loadbalancer-service.yaml
-kubectl get svc ha-demo-lb -w
-kubectl describe svc ha-demo-lb
-kubectl get endpoints ha-demo-lb
+### 3. 리스너 생성
+
+```
+콘솔 > 로드밸런서 > shop-ha-lb > 리스너 > 생성
+
+이름: http-listener
+프로토콜: HTTP
+포트: 80
+알고리즘: ROUND_ROBIN
+
 ```
 
-### 3단계: 다중 가용 영역 배포
+### 4. 헬스 체크 설정
 
-```yaml
-# multi-az-deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ha-demo-multiaz
-  namespace: default
-spec:
-  replicas: 6
-  selector:
-    matchLabels:
-      app: ha-demo-multiaz
-  template:
-    metadata:
-      labels:
-        app: ha-demo-multiaz
-    spec:
-      topologySpreadConstraints:
-      - maxSkew: 1
-        topologyKey: topology.kubernetes.io/zone
-        whenUnsatisfiable: DoNotSchedule
-        labelSelector:
-          matchLabels:
-            app: ha-demo-multiaz
-      - maxSkew: 1
-        topologyKey: kubernetes.io/hostname
-        whenUnsatisfiable: ScheduleAnyway
-        labelSelector:
-          matchLabels:
-            app: ha-demo-multiaz
-      containers:
-      - name: nginx
-        image: nginx:1.24-alpine
-        ports:
-        - containerPort: 80
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 80
-          initialDelaySeconds: 10
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /ready
-            port: 80
-          initialDelaySeconds: 5
-          periodSeconds: 5
-        volumeMounts:
-        - name: nginx-config
-          mountPath: /etc/nginx/conf.d
-      volumes:
-      - name: nginx-config
-        configMap:
-          name: ha-demo-nginx-config
+```
+콘솔 > 로드밸런서 > shop-ha-lb > 리스너 > http-listener > 헬스 체크
+
+프로토콜: HTTP
+경로: /health
+간격: 10초
+타임아웃: 5초
+정상 임계값: 2
+비정상 임계값: 3
+
 ```
 
-### 4단계: Ingress Controller 연동
+| 설정 | 권장값 | 설명 |
+| --- | --- | --- |
+| 간격 | 10초 | 체크 주기 |
+| 타임아웃 | 5초 | 응답 대기 시간 |
+| 정상 임계값 | 2회 | 정상 판정 연속 횟수 |
+| 비정상 임계값 | 3회 | 비정상 판정 연속 횟수 |
 
-```yaml
-# ingress-ha-config.yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: ha-demo-ingress
-  namespace: default
-  annotations:
-    kubernetes.io/ingress.class: nginx
-    nginx.ingress.kubernetes.io/load-balance: "round_robin"
-    nginx.ingress.kubernetes.io/proxy-connect-timeout: "10"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
-    nginx.ingress.kubernetes.io/proxy-next-upstream: "error timeout http_502 http_503 http_504"
-    nginx.ingress.kubernetes.io/proxy-next-upstream-tries: "3"
-    nginx.ingress.kubernetes.io/affinity: "cookie"
-    nginx.ingress.kubernetes.io/session-cookie-name: "route"
-    nginx.ingress.kubernetes.io/session-cookie-expires: "172800"
-spec:
-  rules:
-  - host: ha-demo.example.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: ha-demo-lb
-            port:
-              number: 80
+### 5. 오토스케일링 그룹 생성
+
+```
+콘솔 > 컴퓨팅 > 오토스케일링 > 생성
+
+[서버 템플릿]
+이미지: Ubuntu 22.04 LTS
+사양: 2vCore / 4GB
+루트 스토리지: 50GB
+로그인 방식: SSH 키
+사용자 스크립트: (아래 참조)
+
+[네트워크]
+VPC: shop-vpc
+서브넷: shop-web-subnet (LB와 동일)
+공인 IP: 자동 할당
+보안 그룹: web-sg
+
+[스케일링 그룹 설정]
+이름: shop-ha-scaling
+구동 서버 수: 3
+
+[로드밸런서 연결]
+로드밸런서: shop-ha-lb
+리스너: http-listener (최대 3개 선택 가능)
+서버 포트: 80
+
 ```
 
-### 5단계: 장애 조치(Failover) 테스트
+### 6. 사용자 스크립트 (User Data)
 
 ```bash
-# Pod 상태 확인
-kubectl get pods -l app=ha-demo -o wide
+#!/bin/bash
+apt-get update
+apt-get install -y nginx
 
-# 헬스체크 실패 시뮬레이션
-kubectl exec -it $(kubectl get pod -l app=ha-demo -o jsonpath="{.items[0].metadata.name}") \
-  -- /bin/sh -c "nginx -s stop"
+# 헬스 체크 경로 생성
+mkdir -p /var/www/html
+cat > /var/www/html/health <<EOF
+OK
+EOF
 
-# Pod 상태 변화 관찰
-kubectl get pods -l app=ha-demo -w
+# 서버 식별 페이지
+HOSTNAME=$(hostname)
+IP=$(hostname -I | awk '{print $1}')
+cat > /var/www/html/index.html <<EOF
+<h1>$HOSTNAME</h1>
+<p>IP: $IP</p>
+<p>Time: $(date)</p>
+EOF
 
-# 엔드포인트 변화 확인
-kubectl get endpoints ha-demo-lb -w
+systemctl enable nginx
+systemctl start nginx
+
 ```
 
-로드밸런서 분산 테스트:
+### 7. 스케일링 그룹 상태 확인
+
+```
+콘솔 > 오토스케일링 > shop-ha-scaling
+
+상태: 운영 중
+구동 서버 수: 3/3
+연결된 로드밸런서: shop-ha-lb
+
+```
+
+서버 목록:
+
+| 서버 이름 | 사설 IP | 공인 IP | 상태 |
+| --- | --- | --- | --- |
+| AS-shop-ha-0 | 10.0.1.11 | [xxx.xxx.xxx.xxx](http://xxx.xxx.xxx.xxx/) | 운영 중 |
+| AS-shop-ha-1 | 10.0.1.12 | [xxx.xxx.xxx.xxx](http://xxx.xxx.xxx.xxx/) | 운영 중 |
+| AS-shop-ha-2 | 10.0.1.13 | [xxx.xxx.xxx.xxx](http://xxx.xxx.xxx.xxx/) | 운영 중 |
+
+### 8. 트래픽 분산 테스트
+
 ```bash
-# External IP 가져오기
-LB_IP=$(kubectl get svc ha-demo-lb -o jsonpath="{.status.loadBalancer.ingress[0].ip}")
+# LB 공인 IP로 접속
+LB_IP="[shop-ha-lb 공인 IP]"
 
-# 분산 테스트 (100회)
-for i in $(seq 1 100); do
-  curl -s http://$LB_IP/ | jq -r ".pod"
-done | sort | uniq -c | sort -rn
-
-# 세션 유지 테스트
-for i in $(seq 1 10); do
-  curl -s -c cookies.txt -b cookies.txt http://$LB_IP/ | jq -r ".pod"
+# 분산 테스트
+for i in {1..12}; do
+    curl -s http://$LB_IP | grep "<h1>"
 done
+
 ```
 
-### 6단계: 고급 헬스체크 구성
+출력:
 
-```yaml
-# advanced-healthcheck.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: healthcheck-script
-data:
-  healthcheck.sh: |
-    #!/bin/sh
-    if ! pgrep nginx > /dev/null; then
-      echo "CRITICAL: nginx process not running"
-      exit 1
+```
+<h1>AS-shop-ha-0</h1>
+<h1>AS-shop-ha-1</h1>
+<h1>AS-shop-ha-2</h1>
+<h1>AS-shop-ha-0</h1>
+<h1>AS-shop-ha-1</h1>
+<h1>AS-shop-ha-2</h1>
+...
+
+```
+
+---
+
+## Failover 테스트
+
+### 1. 서버 장애 시뮬레이션
+
+```bash
+# 서버 1에서 Nginx 중지
+ssh -i lab-keypair.pem ubuntu@[AS-shop-ha-0 공인IP]
+sudo systemctl stop nginx
+exit
+
+```
+
+### 2. 헬스 체크 상태 확인
+
+```
+콘솔 > 로드밸런서 > shop-ha-lb > 리스너 > http-listener > 멤버
+
+멤버 상태:
+- AS-shop-ha-0: 비정상 (OFFLINE)  ← 자동 제외
+- AS-shop-ha-1: 정상 (ONLINE)
+- AS-shop-ha-2: 정상 (ONLINE)
+
+```
+
+### 3. 트래픽 확인
+
+```bash
+# 장애 서버 제외하고 분산
+for i in {1..6}; do
+    curl -s http://$LB_IP | grep "<h1>"
+done
+
+```
+
+출력:
+
+```
+<h1>AS-shop-ha-1</h1>
+<h1>AS-shop-ha-2</h1>
+<h1>AS-shop-ha-1</h1>
+<h1>AS-shop-ha-2</h1>
+<h1>AS-shop-ha-1</h1>
+<h1>AS-shop-ha-2</h1>
+
+```
+
+### 4. 서버 복구
+
+```bash
+ssh -i lab-keypair.pem ubuntu@[AS-shop-ha-0 공인IP]
+sudo systemctl start nginx
+exit
+
+```
+
+### 5. 자동 복구 확인
+
+헬스 체크 정상 임계값(2회) 충족 후 자동 복귀:
+
+```
+멤버 상태:
+- AS-shop-ha-0: 정상 (ONLINE)  ← 자동 복귀
+- AS-shop-ha-1: 정상 (ONLINE)
+- AS-shop-ha-2: 정상 (ONLINE)
+
+```
+
+---
+
+## 스케일링 테스트
+
+### 1. 구동 서버 수 증가
+
+```
+콘솔 > 오토스케일링 > shop-ha-scaling > 수정
+
+구동 서버 수: 3 → 5
+
+```
+
+### 2. 서버 자동 생성 확인
+
+```
+콘솔 > 오토스케일링 > shop-ha-scaling > 서버 목록
+
+서버 목록:
+- AS-shop-ha-0: 운영 중
+- AS-shop-ha-1: 운영 중
+- AS-shop-ha-2: 운영 중
+- AS-shop-ha-3: 생성 중 → 운영 중  ← 신규
+- AS-shop-ha-4: 생성 중 → 운영 중  ← 신규
+
+```
+
+### 3. LB 멤버 자동 등록 확인
+
+```
+콘솔 > 로드밸런서 > shop-ha-lb > 리스너 > http-listener > 멤버
+
+멤버 (5개):
+- AS-shop-ha-0: 정상
+- AS-shop-ha-1: 정상
+- AS-shop-ha-2: 정상
+- AS-shop-ha-3: 정상  ← 자동 등록
+- AS-shop-ha-4: 정상  ← 자동 등록
+
+```
+
+### 4. 분산 테스트
+
+```bash
+for i in {1..10}; do
+    curl -s http://$LB_IP | grep "<h1>"
+done
+
+```
+
+출력:
+
+```
+<h1>AS-shop-ha-0</h1>
+<h1>AS-shop-ha-1</h1>
+<h1>AS-shop-ha-2</h1>
+<h1>AS-shop-ha-3</h1>
+<h1>AS-shop-ha-4</h1>
+<h1>AS-shop-ha-0</h1>
+<h1>AS-shop-ha-1</h1>
+<h1>AS-shop-ha-2</h1>
+<h1>AS-shop-ha-3</h1>
+<h1>AS-shop-ha-4</h1>
+
+```
+
+### 5. 구동 서버 수 감소
+
+```
+콘솔 > 오토스케일링 > shop-ha-scaling > 수정
+
+구동 서버 수: 5 → 2
+
+```
+
+### 6. 서버 자동 삭제 확인
+
+```
+서버 목록:
+- AS-shop-ha-0: 운영 중
+- AS-shop-ha-1: 운영 중
+- AS-shop-ha-2: 삭제됨  ← 자동 삭제
+- AS-shop-ha-3: 삭제됨  ← 자동 삭제
+- AS-shop-ha-4: 삭제됨  ← 자동 삭제
+
+```
+
+LB 멤버도 자동 해제:
+
+```
+멤버 (2개):
+- AS-shop-ha-0: 정상
+- AS-shop-ha-1: 정상
+
+```
+
+---
+
+## 리스너 변경
+
+### 여러 리스너 연결
+
+```
+콘솔 > 오토스케일링 > shop-ha-scaling > 로드밸런서 변경
+
+로드밸런서: shop-ha-lb
+리스너 선택 (최대 3개):
+  [✓] http-listener (80)
+  [✓] https-listener (443)
+  [ ] api-listener (8080)
+
+서버 포트:
+  - http-listener: 80
+  - https-listener: 443
+
+```
+
+조건:
+
+- 3개의 리스너는 동일 로드밸런서여야 함
+- 리스너 변경 시 서비스 영향 있음
+
+---
+
+## 예약 스케일링 설정
+
+### 업무 시간대 확장
+
+```
+콘솔 > 오토스케일링 > shop-ha-scaling > 예약 > 생성
+
+[예약 1: 업무 시작]
+이름: weekday-morning-scaleout
+반복: 매주 월~금
+시간: 09:00
+구동 서버 수: 5
+
+[예약 2: 업무 종료]
+이름: weekday-evening-scalein
+반복: 매주 월~금
+시간: 19:00
+구동 서버 수: 2
+
+```
+
+### 예약 목록 확인
+
+```
+콘솔 > 오토스케일링 > shop-ha-scaling > 예약
+
+예약 목록:
+| 이름 | 반복 | 시간 | 구동 서버 수 |
+|------|------|------|-------------|
+| weekday-morning-scaleout | 월~금 | 09:00 | 5 |
+| weekday-evening-scalein | 월~금 | 19:00 | 2 |
+
+```
+
+---
+
+## 분산 테스트 스크립트
+
+### 기본 테스트
+
+```bash
+#!/bin/bash
+# ha-test.sh
+
+LB_IP=$1
+COUNT=${2:-30}
+
+echo "=== HA Load Balancer Test ==="
+echo "Target: $LB_IP"
+echo "Requests: $COUNT"
+echo ""
+
+declare -A servers
+failed=0
+
+for i in $(seq 1 $COUNT); do
+    result=$(curl -s --max-time 5 http://$LB_IP | grep -oP '(?<=<h1>)[^<]+')
+    if [ -z "$result" ]; then
+        ((failed++))
+        echo "Request $i: FAILED"
+    else
+        ((servers["$result"]++))
     fi
-    if ! netstat -tlnp | grep -q ":80"; then
-      echo "CRITICAL: port 80 not listening"
-      exit 1
+done
+
+echo ""
+echo "=== Results ==="
+for server in "${!servers[@]}"; do
+    pct=$((${servers[$server]} * 100 / $COUNT))
+    echo "$server: ${servers[$server]} requests ($pct%)"
+done
+echo ""
+echo "Failed requests: $failed"
+
+```
+
+실행:
+
+```bash
+chmod +x ha-test.sh
+./ha-test.sh [LB 공인IP] 30
+
+```
+
+출력:
+
+```
+=== HA Load Balancer Test ===
+Target: 203.0.113.100
+Requests: 30
+
+=== Results ===
+AS-shop-ha-0: 10 requests (33%)
+AS-shop-ha-1: 10 requests (33%)
+AS-shop-ha-2: 10 requests (33%)
+
+Failed requests: 0
+
+```
+
+### Failover 테스트 스크립트
+
+```bash
+#!/bin/bash
+# failover-test.sh
+
+LB_IP=$1
+DURATION=${2:-60}
+
+echo "=== Failover Monitoring ==="
+echo "Target: $LB_IP"
+echo "Duration: ${DURATION}s"
+echo "Press Ctrl+C to stop"
+echo ""
+
+start_time=$(date +%s)
+success=0
+failed=0
+
+while true; do
+    current_time=$(date +%s)
+    elapsed=$((current_time - start_time))
+
+    if [ $elapsed -ge $DURATION ]; then
+        break
     fi
-    response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/health)
-    if [ "$response" != "200" ]; then
-      echo "CRITICAL: health endpoint returned $response"
-      exit 1
+
+    result=$(curl -s --max-time 2 -o /dev/null -w "%{http_code}" http://$LB_IP)
+    timestamp=$(date '+%H:%M:%S')
+
+    if [ "$result" == "200" ]; then
+        server=$(curl -s --max-time 2 http://$LB_IP | grep -oP '(?<=<h1>)[^<]+')
+        echo "[$timestamp] OK - $server"
+        ((success++))
+    else
+        echo "[$timestamp] FAIL - HTTP $result"
+        ((failed++))
     fi
-    echo "OK: all checks passed"
-    exit 0
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ha-demo-advanced
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: ha-demo-advanced
-  template:
-    metadata:
-      labels:
-        app: ha-demo-advanced
-    spec:
-      containers:
-      - name: nginx
-        image: nginx:1.24-alpine
-        ports:
-        - containerPort: 80
-        livenessProbe:
-          exec:
-            command: ["/bin/sh", "/scripts/healthcheck.sh"]
-          initialDelaySeconds: 15
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
-        readinessProbe:
-          httpGet:
-            path: /ready
-            port: 80
-          initialDelaySeconds: 5
-          periodSeconds: 5
-        startupProbe:
-          httpGet:
-            path: /health
-            port: 80
-          periodSeconds: 5
-          failureThreshold: 30
-        volumeMounts:
-        - name: healthcheck-script
-          mountPath: /scripts
-        - name: nginx-config
-          mountPath: /etc/nginx/conf.d
-      volumes:
-      - name: healthcheck-script
-        configMap:
-          name: healthcheck-script
-          defaultMode: 0755
-      - name: nginx-config
-        configMap:
-          name: ha-demo-nginx-config
+
+    sleep 1
+done
+
+echo ""
+echo "=== Summary ==="
+echo "Success: $success"
+echo "Failed: $failed"
+total=$((success + failed))
+if [ $total -gt 0 ]; then
+    availability=$((success * 100 / total))
+    echo "Availability: $availability%"
+fi
+
 ```
 
-### 7단계: 모니터링 알림 설정
+실행:
 
-```yaml
-# ha-monitoring.yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: ha-demo-monitor
-  namespace: monitoring
-spec:
-  selector:
-    matchLabels:
-      app: ha-demo
-  endpoints:
-  - port: http
-    path: /status
-    interval: 15s
-  namespaceSelector:
-    matchNames:
-    - default
----
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: ha-demo-alerts
-  namespace: monitoring
-spec:
-  groups:
-  - name: ha-demo.rules
-    rules:
-    - alert: HADemoPodsDown
-      expr: sum(up{job="ha-demo"}) < 2
-      for: 1m
-      labels:
-        severity: critical
-      annotations:
-        summary: "HA Demo - 가용 Pod 부족"
-        description: "정상 Pod 수가 2개 미만입니다"
+```bash
+chmod +x failover-test.sh
+./failover-test.sh [LB 공인IP] 60
 
-    - alert: HADemoHighLatency
-      expr: |
-        histogram_quantile(0.95,
-          sum(rate(nginx_http_request_duration_seconds_bucket{job="ha-demo"}[5m])) by (le)
-        ) > 1
-      for: 5m
-      labels:
-        severity: warning
-      annotations:
-        summary: "HA Demo - 높은 응답 시간"
-
-    - alert: HADemoHighErrorRate
-      expr: |
-        sum(rate(nginx_http_requests_total{job="ha-demo",status=~"5.."}[5m]))
-        / sum(rate(nginx_http_requests_total{job="ha-demo"}[5m])) > 0.05
-      for: 2m
-      labels:
-        severity: warning
-      annotations:
-        summary: "HA Demo - 높은 에러율"
 ```
-
----
-
-## 심화 이해
-
-### 세션 유지 전략
-
-| 전략 | 장점 | 단점 |
-|------|------|------|
-| Source IP | 구현 간단 | NAT 환경 문제 |
-| Cookie | NAT 환경 지원 | 쿠키 필수 |
-| Application Session | 서버 장애 시에도 유지 | 외부 저장소 필요 |
-
-### Redis 세션 저장소
-
-```yaml
-# redis-session-store.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: redis-session
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: redis-session
-  template:
-    metadata:
-      labels:
-        app: redis-session
-    spec:
-      containers:
-      - name: redis
-        image: redis:7-alpine
-        ports:
-        - containerPort: 6379
-        command:
-        - redis-server
-        - --appendonly
-        - "yes"
-        - --maxmemory
-        - 100mb
-        - --maxmemory-policy
-        - allkeys-lru
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: redis-session
-spec:
-  selector:
-    app: redis-session
-  ports:
-  - port: 6379
-    targetPort: 6379
-```
-
-### Connection Draining 설정
-
-```yaml
-# connection-draining.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ha-demo-graceful
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: ha-demo-graceful
-  template:
-    metadata:
-      labels:
-        app: ha-demo-graceful
-    spec:
-      terminationGracePeriodSeconds: 60
-      containers:
-      - name: nginx
-        image: nginx:1.24-alpine
-        ports:
-        - containerPort: 80
-        lifecycle:
-          preStop:
-            exec:
-              command: ["/bin/sh", "-c", "nginx -s quit && sleep 30"]
-```
-
-### 성능 최적화
-
-| 항목 | 설명 | 권장 설정 |
-|------|------|-----------|
-| Keep-Alive | 연결 재사용 | 활성화, 60-120초 |
-| Connection Pooling | 백엔드 연결 풀 | 100-500개 |
-| Compression | 압축 | gzip/brotli |
-| SSL Termination | SSL 종료 | LB에서 처리 |
-| HTTP/2 | 멀티플렉싱 | 활성화 |
 
 ---
 
 ## 트러블슈팅
 
-### 문제 1: External IP 미할당
+| 문제 | 원인 | 해결 |
+| --- | --- | --- |
+| LB 연결 불가 | 서브넷 불일치 | LB와 오토스케일링 동일 서브넷 확인 |
+| 서버 자동 등록 안됨 | 리스너 미연결 | 스케일링 그룹에서 LB 리스너 연결 |
+| 헬스 체크 실패 | 경로 미존재 | /health 경로 및 응답 확인 |
+| Failover 지연 | 임계값 높음 | 비정상 임계값 낮춤 (3→2) |
+| 서버 생성 실패 | 쿼터 초과 | 프로젝트 쿼터 확인 |
+| 공인 IP 미할당 | IP 부족 | 공인 IP 추가 생성 |
+
+### 헬스 체크 디버깅
 
 ```bash
-# 서비스 이벤트 확인
-kubectl describe svc ha-demo-lb
+# 서버 내부에서 헬스 체크 테스트
+ssh -i lab-keypair.pem ubuntu@[서버IP]
 
-# Cloud Controller Manager 로그
-kubectl logs -n kube-system -l app=cloud-controller-manager
+# Nginx 상태
+sudo systemctl status nginx
 
-# 서비스 재생성
-kubectl delete svc ha-demo-lb
-kubectl apply -f ha-loadbalancer-service.yaml
+# 헬스 체크 경로 테스트
+curl -v <http://localhost/health>
+
+# 포트 리스닝 확인
+sudo ss -tlnp | grep :80
+
 ```
 
-### 문제 2: 헬스체크 실패
+### 로그 확인
 
 ```bash
-# Pod 내부 테스트
-kubectl exec -it $(kubectl get pod -l app=ha-demo -o jsonpath="{.items[0].metadata.name}") \
-  -- curl -v http://localhost/health
+# Nginx 에러 로그
+sudo tail -f /var/log/nginx/error.log
 
-# Probe 설정 확인
-kubectl get deployment ha-demo-app -o yaml | grep -A 20 "livenessProbe"
-```
+# Nginx 액세스 로그 (헬스 체크 요청)
+sudo tail -f /var/log/nginx/access.log | grep health
 
-### 문제 3: 세션 유지 실패
-
-```bash
-# 세션 어피니티 확인
-kubectl get svc ha-demo-lb -o yaml | grep -A 5 "sessionAffinity"
-
-# 쿠키 테스트
-curl -c cookies.txt -b cookies.txt http://$LB_IP/
-```
-
-### 문제 4: Failover 지연
-
-```bash
-# 헬스체크 최적화
-kubectl annotate svc ha-demo-lb --overwrite \
-  service.beta.kubernetes.io/gabia-load-balancer-health-check-interval="5" \
-  service.beta.kubernetes.io/gabia-load-balancer-unhealthy-threshold="2"
-```
-
-### 진단 명령어
-
-```bash
-# 전체 상태 진단
-echo "=== Service Status ==="
-kubectl get svc ha-demo-lb -o wide
-
-echo "=== Endpoints Status ==="
-kubectl get endpoints ha-demo-lb
-
-echo "=== Pod Status ==="
-kubectl get pods -l app=ha-demo -o wide
-
-echo "=== Recent Events ==="
-kubectl get events --field-selector involvedObject.name=ha-demo-lb --sort-by=".lastTimestamp" | tail -10
 ```
 
 ---
 
-## 다음 단계
+## 완료 체크리스트
 
-이 Lab을 완료한 후 다음을 학습하세요:
+```
+[ ] 로드밸런서 생성
+[ ] 공인 IP 할당 (고정 권장)
+[ ] 리스너 생성 및 헬스 체크 설정
+[ ] 오토스케일링 그룹 생성 (LB 연결)
+[ ] 서버 자동 생성 확인
+[ ] LB 멤버 자동 등록 확인
+[ ] 트래픽 분산 테스트
+[ ] Failover 테스트 (서버 장애 시뮬레이션)
+[ ] 자동 복구 확인
+[ ] 스케일링 테스트 (증가/감소)
+[ ] 예약 스케일링 설정 (선택)
 
-1. **[Lab 20: CDN](../lab20-cdn-caching/README.md)** - 콘텐츠 전송 네트워크로 성능 향상
-2. **[Lab 17: 모니터링](../lab17-monitoring/README.md)** - 로드밸런서 메트릭 모니터링
-3. **[Lab 18: 자동 백업](../lab18-auto-backup/README.md)** - 설정 백업 및 복구
-
----
-
-## 리소스 정리
-
-```bash
-# Ingress 삭제
-kubectl delete ingress ha-demo-ingress
-
-# Service 삭제
-kubectl delete svc ha-demo-lb redis-session
-
-# Deployment 삭제
-kubectl delete deployment ha-demo-app ha-demo-multiaz ha-demo-advanced ha-demo-graceful redis-session
-
-# ConfigMap 삭제
-kubectl delete configmap ha-demo-nginx-config healthcheck-script
-
-# 모니터링 리소스 삭제
-kubectl delete servicemonitor -n monitoring ha-demo-monitor
-kubectl delete prometheusrule -n monitoring ha-demo-alerts
-
-# 정리 확인
-kubectl get all -l app=ha-demo
 ```
 
 ---
 
-## 학습 정리
+### 삭제 순서
 
-### 핵심 개념
+```
+1. 오토스케일링 그룹 삭제
+콘솔 > 오토스케일링 > shop-ha-scaling > 삭제
+(소속 서버 자동 삭제)
 
-| 구성 요소 | 역할 | 핵심 설정 |
-|-----------|------|-----------|
-| LoadBalancer | 트래픽 분산 | algorithm, health-check |
-| Health Check | 상태 확인 | interval, threshold |
-| Session Affinity | 세션 유지 | ClientIP, Cookie |
-| Multi-AZ | 고가용성 | topologySpreadConstraints |
+2. 로드밸런서 삭제
+콘솔 > 로드밸런서 > shop-ha-lb > 삭제
 
-### 체크리스트
+3. 공인 IP 삭제 (선택)
+콘솔 > 네트워크 > 공인 IP > shop-lb-ip > 삭제
 
-- [ ] LoadBalancer 서비스 생성 및 External IP 할당
-- [ ] 헬스체크 설정 및 동작 확인
-- [ ] 다중 가용 영역 배포 구성
-- [ ] 장애 조치 테스트 수행
-- [ ] 세션 유지 설정 확인
-- [ ] 모니터링 알림 설정
-- [ ] 리소스 정리 완료
+```
 
 ---
 
-**이전 Lab**: [Lab 18: 자동 백업](../lab18-auto-backup/README.md)
-**다음 Lab**: [Lab 20: CDN](../lab20-cdn-caching/README.md)
+## 아키텍처 비교
+
+### 기본 구성 vs HA 구성
+
+| 항목 | 기본 구성 (Lab 10) | HA 구성 (Lab 19) |
+| --- | --- | --- |
+| 서버 관리 | 수동 등록 | 오토스케일링 자동 관리 |
+| 서버 수 | 고정 | 자동 확장/축소 |
+| 장애 대응 | 수동 복구 | 자동 Failover |
+| 확장성 | 제한적 | 탄력적 |
+| 비용 | 고정 | 사용량 기반 |
+
+### 가용성 수준
+
+| 구성 | 서버 수 | 장애 허용 | 가용성 |
+| --- | --- | --- | --- |
+| 단일 서버 | 1대 | 0대 | ~99% |
+| 기본 LB | 2대 | 1대 | ~99.9% |
+| HA + 오토스케일링 | 3대+ | 2대+ | ~99.95% |
+
+---
+
+## 심화: 다중 리스너 구성
+
+### HTTP + HTTPS 구성
+
+```
+콘솔 > 로드밸런서 > shop-ha-lb > 리스너
+
+[리스너 1]
+이름: http-listener
+프로토콜: HTTP
+포트: 80
+
+[리스너 2]
+이름: https-listener
+프로토콜: HTTPS
+포트: 443
+SSL 인증서: shop-cert
+
+```
+
+### 오토스케일링 연결
+
+```
+콘솔 > 오토스케일링 > shop-ha-scaling > 로드밸런서 변경
+
+리스너 선택:
+  [✓] http-listener → 서버 포트: 80
+  [✓] https-listener → 서버 포트: 443
+
+```
+
+### Nginx SSL 설정 (사용자 스크립트)
+
+```bash
+#!/bin/bash
+apt-get update
+apt-get install -y nginx
+
+# 헬스 체크 경로
+mkdir -p /var/www/html
+echo "OK" > /var/www/html/health
+
+# 서버 식별 페이지
+HOSTNAME=$(hostname)
+cat > /var/www/html/index.html <<EOF
+<h1>$HOSTNAME</h1>
+<p>Time: $(date)</p>
+EOF
+
+# SSL 종료는 LB에서 처리하므로 서버는 HTTP만 리스닝
+systemctl enable nginx
+systemctl start nginx
+
+```
+
+---
+
+## 심화: 세션 유지 설정
+
+### Source IP 기반 세션 유지
+
+```
+콘솔 > 로드밸런서 > shop-ha-lb > 리스너 > http-listener > 수정
+
+세션 유지: 활성화
+방식: Source IP
+타임아웃: 3600초 (1시간)
+
+```
+
+### 테스트
+
+```bash
+# 동일 클라이언트에서 요청 시 같은 서버로 전달
+for i in {1..5}; do
+    curl -s http://$LB_IP | grep "<h1>"
+done
+
+```
+
+출력 (동일 서버):
+
+```
+<h1>AS-shop-ha-1</h1>
+<h1>AS-shop-ha-1</h1>
+<h1>AS-shop-ha-1</h1>
+<h1>AS-shop-ha-1</h1>
+<h1>AS-shop-ha-1</h1>
+
+```
+
+---
+
+## 심화: 가중치 기반 분산
+
+### 서버별 가중치 설정
+
+신규 서버 배포 시 가중치를 낮게 설정하여 점진적 트래픽 증가:
+
+```
+콘솔 > 로드밸런서 > shop-ha-lb > 리스너 > http-listener > 멤버
+
+멤버 가중치:
+- AS-shop-ha-0: 가중치 10 (기존 서버)
+- AS-shop-ha-1: 가중치 10 (기존 서버)
+- AS-shop-ha-2: 가중치 1  (신규 서버, 10% 트래픽)
+
+```
+
+### 점진적 가중치 증가
+
+```
+1단계: 신규 서버 가중치 1 (약 5% 트래픽)
+2단계: 신규 서버 가중치 5 (약 20% 트래픽)
+3단계: 신규 서버 가중치 10 (균등 분배)
+
+```
+
+---
+
+## 모니터링 지표
+
+### 콘솔에서 확인
+
+```
+콘솔 > 오토스케일링 > shop-ha-scaling > 모니터링
+
+조회 범위: 최근 24시간
+
+지표:
+- CPU 사용률 (%): 전체 서버 평균
+- 메모리 사용률 (%): 전체 서버 평균
+- 디스크 사용률 (%): 전체 서버 평균
+- 디스크 I/O (BPS): 전체 서버 평균
+
+```
+
+### 서버별 상세 모니터링
+
+```
+콘솔 > 모니터링 > 서버 선택 > AS-shop-ha-0
+
+상세 지표 조회
+
+```
+
+---
+
+## 정책 요약
+
+| 항목 | 정책 |
+| --- | --- |
+| LB 연결 조건 | 동일 서브넷에 생성된 LB만 선택 가능 |
+| 리스너 연결 | 최대 3개 (동일 LB의 리스너) |
+| 구동 서버 수 | 0~10대 |
+| 서버 자동 관리 | 오토스케일링 서버는 리스너 멤버로 자동 추가/삭제 |
+| 서버 이름 | AS-[그룹명]-[번호] 형식 |
+| 공인 IP | 자동 할당 방식 (스케일인 시 회수/삭제) |
+| 보안 그룹 | 변경 불가 (변경 시 그룹 재생성 필요) |
+| 고정 IP 권장 | 외부 고정 IP 필요 시 LB에 고정 공인 IP 할당 |
+
+---
+
+## 완료 체크리스트
+
+```
+[ ] 로드밸런서 생성 (동일 서브넷)
+[ ] 공인 IP 할당 (고정 권장)
+[ ] 리스너 생성
+[ ] 헬스 체크 설정 (간격, 임계값)
+[ ] 오토스케일링 그룹 생성
+[ ] LB 리스너 연결 (최대 3개)
+[ ] 사용자 스크립트 설정 (헬스 체크 경로 포함)
+[ ] 서버 자동 생성 확인
+[ ] LB 멤버 자동 등록 확인
+[ ] 트래픽 분산 테스트
+[ ] Failover 테스트
+[ ] 자동 복구 확인
+[ ] 스케일 아웃/인 테스트
+[ ] 예약 스케일링 설정 (선택)
+[ ] 세션 유지 설정 (선택)
+[ ] 리소스 정리
+
+```
+
+---
+
+**이전 Lab**: [Lab 18: 자동 백업](https://www.notion.so/lab18-auto-backup/README.md)**다음 Lab**: [Lab 20: CDN](https://www.notion.so/lab20-cdn-caching/README.md)
+
+---
