@@ -40,7 +40,7 @@
 
 ```bash
 # SSH 접속
-ssh -i key.pem ubuntu@[서버IP]
+ssh -i lab-keypair.pem ubuntu@[서버IP]
 
 # 디바이스 확인
 lsblk
