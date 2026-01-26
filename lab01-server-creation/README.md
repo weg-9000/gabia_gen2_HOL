@@ -254,19 +254,15 @@ sudo apt install -y curl wget vim htop net-tools
 ```bash
 #!/bin/bash
 
-# 로그 파일 설정
 LOG_FILE="/var/log/user-script.log"
 exec > >(tee -a $LOG_FILE) 2>&1
 echo "=== Script started at $(date) ==="
 
-# 타임존 설정
 timedatectl set-timezone Asia/Seoul
 
-# 시스템 업데이트
 apt-get update -y
 apt-get upgrade -y
 
-# 필수 패키지 설치
 apt-get install -y \
     python3 \
     python3-pip \
@@ -277,18 +273,15 @@ apt-get install -y \
     vim \
     htop
 
-# shop-app 다운로드
 cd /opt
 git clone https://github.com/weg-9000/gabia_gen2_HOL.git
 cd gabia_gen2_HOL/shop-app
 
-# 가상환경 생성 및 의존성 설치
 python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# 환경 변수 설정 (개발 환경 - SQLite)
 cat > .env << 'ENVEOF'
 ENVIRONMENT=development
 DATABASE_URL=sqlite:///./shop.db
@@ -297,7 +290,6 @@ PORT=8000
 DEBUG=true
 ENVEOF
 
-# Systemd 서비스 등록
 cat > /etc/systemd/system/shop-app.service << 'SVCEOF'
 [Unit]
 Description=Gabia Shop App
@@ -319,7 +311,6 @@ systemctl daemon-reload
 systemctl enable shop-app
 systemctl start shop-app
 
-# Nginx 리버스 프록시 설정
 cat > /etc/nginx/sites-available/shop-app << 'NGXEOF'
 server {
     listen 80;
