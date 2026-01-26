@@ -122,18 +122,22 @@ sudo systemctl enable postgresql
 ### 7. 데이터베이스 생성
 
 ```bash
-sudo -u postgres psql
-```
 
-```sql
+# 1단계: 데이터베이스 및 사용자 생성
+sudo -u postgres psql
+sql
+```
+```
 CREATE DATABASE shopdb;
 CREATE USER shopuser WITH PASSWORD 'shoppass';
 GRANT ALL PRIVILEGES ON DATABASE shopdb TO shopuser;
-\c shopdb
-GRANT ALL ON SCHEMA public TO shopuser;
 \q
 ```
+```bash
 
+# 2단계: 스키마 권한 부여
+sudo -u postgres psql -d shopdb -c "GRANT ALL ON SCHEMA public TO shopuser;"
+```
 ### 8. 확인
 
 ```bash
