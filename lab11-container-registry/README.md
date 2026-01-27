@@ -115,7 +115,7 @@ VPC: shop-vpc (10.0.0.0/16)
 
 결과:
 
-- Public URI: `shop-registry.registry.gabia.com`
+- Public URI: `shop-registry.cr.gabia.com`(본인 것)
 
 ### 4. 레지스트리 정보 확인
 
@@ -128,7 +128,7 @@ VPC: shop-vpc (10.0.0.0/16)
 | --- | --- |
 | 이름 | shop-registry |
 | Private URI | [랜덤ID].registry.gabia.com |
-| Public URI | [shop-registry.registry.gabia.com](http://shop-registry.registry.gabia.com/) |
+| Public URI | [shop-registry.cr.gabia.com](http://shop-registry.cr.gabia.com/) |
 | 연결된 네트워크 | shop-vpc / shop-subnet |
 | Pull 권한 | 권한을 가진 멤버만 허용 |
 | 보안 취약점 검사 | 자동 검사 |
@@ -155,7 +155,7 @@ docker --version
 
 ```bash
 # Public URI로 로그인
-docker login shop-registry.registry.gabia.com
+docker login shop-registry.cr.gabia.com
 
 ```
 
