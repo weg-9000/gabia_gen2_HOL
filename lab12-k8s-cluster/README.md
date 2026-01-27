@@ -71,235 +71,220 @@ VPC: shop-vpc (10.0.0.0/16)
 
 ```
 
-### 2. Kubernetes 클러스터 생성
+### 6. kubeconfig 다운로드 및 설정
 
-```
-콘솔 > 컨테이너 > Kubernetes > 클러스터 생성
-
-```
-
-**[클러스터 기본 정보]**
-
-| 항목 | 값 |
-| --- | --- |
-| 클러스터 이름 | shop-cluster |
-| Kubernetes 버전 | 1.32 |
-| 설명 | 쇼핑몰 애플리케이션 클러스터 |
-
-**[네트워크 설정]**
-
-| 항목 | 값 |
-| --- | --- |
-| VPC | shop-vpc |
-| 서브넷 | shop-subnet |
-
-### 3. 노드그룹 설정
-
-```
-콘솔 > 클러스터 생성 > 노드그룹 설정
-
-```
-
-**[노드그룹 기본 정보]**
-
-| 항목 | 값 |
-| --- | --- |
-| 노드그룹 이름 | default-pool |
-| 노드 사양 | 2vCore / 4GB |
-| 루트 스토리지 | 50GB SSD |
-
-**[워커노드 설정]**
-
-| 항목 | 값 |
-| --- | --- |
-| 워커노드 수 | 2 |
-| 공인 IP 할당 | 미할당 |
-
-**[보안 그룹]**
-
-| 항목 | 값 |
-| --- | --- |
-| 보안 그룹 | k8s-worker-sg (신규 생성 또는 기존 선택) |
-
-### 4. 오토스케일러 설정 (선택)
-
-```
-콘솔 > 클러스터 생성 > 오토스케일링 설정
-
-```
-
-| 항목 | 값 |
-| --- | --- |
-| 오토스케일링 | 사용 |
-| 최소 노드 수 | 2 |
-| 최대 노드 수 | 5 |
-| 리소스 임계치 | 70% |
-| 리소스 유지 기간 | 5분 |
-| 자동 감소 | 사용 |
-
-조건:
-
-- 오토스케일링 사용 시 워커노드 수 임의 변경 불가
-- 쿨타임 10분 고정
-
-### 5. 클러스터 생성 확인
-
-```
-콘솔 > 컨테이너 > Kubernetes > shop-cluster
-
-```
-
-| 상태 | 설명 |
-| --- | --- |
-| 생성 중 | 클러스터 프로비저닝 중 (10~15분 소요) |
-| 운영 중 | 정상 동작 |
-| 에러 | 생성 실패 |
-
-### 5. 클러스터 생성 확인
-
-```
-콘솔 > 컨테이너 > Kubernetes > shop-cluster
-
-```
-
-| 상태 | 설명 |
-| --- | --- |
-| 생성 중 | 클러스터 프로비저닝 중 (10~15분 소요) |
-| 운영 중 | 정상 동작 |
-| 에러 | 생성 실패 |
-
-클러스터 상세 정보:
-
-| 항목 | 값 |
-| --- | --- |
-| 클러스터 이름 | shop-cluster |
-| 상태 | 운영 중 |
-| Kubernetes 버전 | 1.32 |
-| VPC | shop-vpc |
-| 서브넷 | shop-subnet |
-| 노드그룹 | 1개 |
-| 워커노드 | 2개 |
-
-### 6. kubeconfig 다운로드
+#### 6.1 kubeconfig 파일 다운로드
 
 ```
 콘솔 > 컨테이너 > Kubernetes > shop-cluster > kubeconfig 다운로드
-
 ```
 
-다운로드한 파일을 로컬 환경에 설정:
+> ** 주의사항**  
+> - 다운로드한 파일이 `.txt` 확장자로 저장될 수 있습니다.
+> - 파일명은 `kubeconfig-[클러스터ID].txt` 형태입니다.
+
+---
+
+#### 6.2 로컬 환경 설정
+
+**운영체제별로 다른 방법을 사용하세요:**
+
+<details>
+<summary><b> Windows (PowerShell)</b></summary>
+
+##### 방법 1: 환경 변수 사용 (권장) 
+
+가장 간단하고 확실한 방법입니다:
+
+```powershell
+# 다운로드한 파일 경로를 환경 변수로 지정
+$env:KUBECONFIG = "$env:USERPROFILE\Downloads\kubeconfig-[클러스터ID].txt"
+
+# 연결 확인
+kubectl cluster-info
+```
+
+> ** 영구 설정 방법**  
+> PowerShell 프로필에 추가하면 매번 설정할 필요가 없습니다:
+> ```powershell
+> # 프로필 파일 열기
+> notepad $PROFILE
+> 
+> # 다음 줄 추가 후 저장
+> $env:KUBECONFIG = "C:\Users\[사용자명]\Downloads\kubeconfig-[클러스터ID].txt"
+> ```
+
+##### 방법 2: 표준 경로에 복사
+
+```powershell
+# .kube 디렉토리 생성
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.kube"
+
+# kubeconfig 파일 복사
+Copy-Item -Path "$env:USERPROFILE\Downloads\kubeconfig-[클러스터ID].txt" -Destination "$env:USERPROFILE\.kube\config" -Force
+
+# 권한 설정
+icacls "$env:USERPROFILE\.kube\config" /inheritance:r /grant:r "${env:USERNAME}:M"
+
+# 연결 확인
+kubectl cluster-info
+```
+
+> ** 문제 발생 시**  
+> 인코딩 문제로 오류가 발생하면 다음을 시도하세요:
+> ```powershell
+> $content = Get-Content "$env:USERPROFILE\Downloads\kubeconfig-[클러스터ID].txt" -Raw
+> Set-Content -Path "$env:USERPROFILE\.kube\config" -Value $content -Encoding UTF8 -NoNewline
+> ```
+
+</details>
+
+<details>
+<summary><b> Linux /  macOS</b></summary>
 
 ```bash
 # kubeconfig 디렉토리 생성
 mkdir -p ~/.kube
 
 # 다운로드한 파일 복사
-cp ~/Downloads/shop-cluster-kubeconfig ~/.kube/config
+cp ~/Downloads/kubeconfig-[클러스터ID] ~/.kube/config
 
-# 권한 설정
+# 권한 설정 (보안을 위해 소유자만 읽기/쓰기 가능하도록)
 chmod 600 ~/.kube/config
 
+# 연결 확인
+kubectl cluster-info
 ```
 
-### 7. kubectl 설치 (로컬 PC)
+> **💡 다른 경로 사용 시**  
+> ```bash
+> export KUBECONFIG=~/Downloads/kubeconfig-[클러스터ID]
+> kubectl cluster-info
+> ```
 
-```bash
-# Linux (Ubuntu/Debian)
-curl -LO "<https://dl.k8s.io/release/$>(curl -L -s <https://dl.k8s.io/release/stable.txt>)/bin/linux/amd64/kubectl"
-chmod +x kubectl
-sudo mv kubectl /usr/local/bin/
+</details>
 
-# macOS
-brew install kubectl
+---
 
-# 설치 확인
-kubectl version --client
+#### 6.3 연결 확인
 
-```
-
-### 8. 클러스터 연결 확인
+설정이 완료되면 다음 명령어로 클러스터 연결을 확인합니다:
 
 ```bash
 # 클러스터 정보 확인
 kubectl cluster-info
-
 ```
 
-출력:
-
+**예상 출력:**
 ```
-Kubernetes control plane is running at <https://k8s-api.gabia.com:6443>
-CoreDNS is running at <https://k8s-api.gabia.com:6443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy>
-
+Kubernetes control plane is running at https://[클러스터ID].gks.gabiacloud.com
+CoreDNS is running at https://[클러스터ID].gks.gabiacloud.com/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
 ```
 
 ```bash
 # 노드 목록 확인
 kubectl get nodes
-
 ```
 
-출력:
-
+**예상 출력:**
 ```
 NAME                    STATUS   ROLES    AGE   VERSION
 shop-cluster-worker-1   Ready    <none>   10m   v1.32.0
 shop-cluster-worker-2   Ready    <none>   10m   v1.32.0
-
 ```
 
+> **✅ 성공 기준**  
+> - 모든 노드의 STATUS가 `Ready`로 표시
+> - 오류 메시지 없이 정상 출력
+
+---
+
+
+
+**Linux/macOS:**
 ```bash
-# 노드 상세 정보
-kubectl get nodes -o wide
-
+# 권한 재설정
+chmod 600 ~/.kube/config
+# 또는 환경 변수 사용
+export KUBECONFIG=~/Downloads/kubeconfig-[클러스터ID]
 ```
 
-출력:
 
-```
-NAME                    STATUS   ROLES    AGE   VERSION   INTERNAL-IP   OS-IMAGE
-shop-cluster-worker-1   Ready    <none>   10m   v1.32.0   10.0.1.10     Ubuntu 22.04
-shop-cluster-worker-2   Ready    <none>   10m   v1.32.0   10.0.1.11     Ubuntu 22.04
-
-```
 
 ### 9. 시스템 파드 확인
 
 ```bash
 # kube-system 네임스페이스 파드 확인
 kubectl get pods -n kube-system
-
 ```
 
-출력:
-
+**예상 출력:**
 ```
-NAME                       READY   STATUS    RESTARTS   AGE
-coredns-xxx-abc            1/1     Running   0          10m
-coredns-xxx-def            1/1     Running   0          10m
-kube-proxy-xxx             1/1     Running   0          10m
-kube-proxy-yyy             1/1     Running   0          10m
-calico-node-xxx            1/1     Running   0          10m
-calico-node-yyy            1/1     Running   0          10m
-
+NAME                              READY   STATUS    RESTARTS   AGE
+coredns-xxx-abc                   1/1     Running   0          10m
+coredns-xxx-def                   1/1     Running   0          10m
+kube-proxy-xxx                    1/1     Running   0          10m
+kube-proxy-yyy                    1/1     Running   0          10m
+calico-node-xxx                   1/1     Running   0          10m
+calico-node-yyy                   1/1     Running   0          10m
+metrics-server-xxx                0/1     Running   0          2m
 ```
+
+> **💡 참고:** Metrics Server가 `READY 0/1` 상태일 수 있습니다. 다음 단계에서 수정합니다.
+
+---
 
 ### 10. 클러스터 리소스 확인
+
+#### 10.1 Metrics Server 설정
+
+```bash
+# Metrics Server에 TLS 검증 우회 옵션 추가
+kubectl patch deployment metrics-server -n kube-system --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--kubelet-insecure-tls"}]'
+
+# 재시작 대기 (약 1분)
+kubectl rollout status deployment metrics-server -n kube-system
+sleep 60
+```
+
+> **⚠️ 이 단계가 필요한 이유**  
+> 가비아 클라우드 Kubernetes의 kubelet 인증서 구성으로 인해 Metrics Server가 TLS 검증에 실패할 수 있습니다.
+
+#### 10.2 노드 리소스 확인
 
 ```bash
 # 노드 리소스 사용량
 kubectl top nodes
-
 ```
 
-출력:
-
+**예상 출력:**
 ```
-NAME                    CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%
-shop-cluster-worker-1   125m         6%     1024Mi          25%
-shop-cluster-worker-2   98m          4%     890Mi           22%
-
+NAME                                  CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%
+shop-cluster-default-pool-xxx-xxx     125m         6%     1024Mi          25%
+shop-cluster-default-pool-xxx-yyy     98m          4%     890Mi           22%
 ```
+
+#### 10.3 전체 리소스 확인
+
+```bash
+# 모든 네임스페이스의 모든 리소스 확인
+kubectl get all -A
+```
+
+#### 10.4 노드 상세 정보
+
+```bash
+# 노드 상세 정보
+kubectl get nodes -o wide
+```
+
+**예상 출력:**
+```
+NAME                                  STATUS   ROLES    AGE   VERSION   INTERNAL-IP   
+shop-cluster-default-pool-xxx-xxx     Ready    <none>   10m   v1.32.0   192.168.0.x   
+shop-cluster-default-pool-xxx-yyy     Ready    <none>   10m   v1.32.0   192.168.0.x   
+```
+
 
 ```bash
 # 모든 네임스페이스 리소스 확인
