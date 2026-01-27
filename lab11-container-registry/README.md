@@ -311,9 +311,9 @@ Status: Downloaded newer image for shop-registry.cr.gabiacloud.com/shop-app:v1.0
 
 ```bash
 # 컨테이너 실행
-docker run -d \\
-  --name shop-app-test \\
-  -p 8080:80 \\
+docker run -d \
+  --name shop-app-test \
+  -p 8080:80 \
   shop-registry.cr.gabiacloud.com/shop-app:v1.0
 
 # 상태 확인
