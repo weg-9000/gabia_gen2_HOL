@@ -91,7 +91,7 @@ VPC: shop-vpc (10.0.0.0/16)
 
 생성 결과:
 
-- Private URI: `[랜덤ID].registry.gabia.com` (자동 생성)
+- Private URI: `[랜덤ID].private-cr.gabiacloud.com` (자동 생성)
 - 상태: 운영중
 
 ### 3. Public URI 활성화
@@ -115,7 +115,7 @@ VPC: shop-vpc (10.0.0.0/16)
 
 결과:
 
-- Public URI: `shop-registry.cr.gabia.com`(본인 것)
+- Public URI: `shop-registry.cr.gabiacloud.com`(본인 것)
 
 ### 4. 레지스트리 정보 확인
 
@@ -128,7 +128,7 @@ VPC: shop-vpc (10.0.0.0/16)
 | --- | --- |
 | 이름 | shop-registry |
 | Private URI | [랜덤ID].registry.gabia.com |
-| Public URI | [shop-registry.cr.gabia.com](http://shop-registry.cr.gabia.com/) |
+| Public URI | [shop-registry.cr.gabiacloud.com](http://shop-registry.cr.gabiacloud.com/) |
 | 연결된 네트워크 | shop-vpc / shop-subnet |
 | Pull 권한 | 권한을 가진 멤버만 허용 |
 | 보안 취약점 검사 | 자동 검사 |
@@ -155,7 +155,7 @@ docker --version
 
 ```bash
 # Public URI로 로그인
-docker login shop-registry.cr.gabia.com
+docker login shop-registry.cr.gabiacloud.com
 
 ```
 
@@ -217,7 +217,7 @@ Successfully tagged shop-app:v1.0
 
 ```bash
 # 레지스트리용 태그 생성
-docker tag shop-app:v1.0 shop-registry.cr.gabia.com/shop-app:v1.0
+docker tag shop-app:v1.0 shop-registry.cr.gabiacloud.com/shop-app:v1.0
 
 # 태그 확인
 docker images | grep shop
@@ -228,7 +228,7 @@ docker images | grep shop
 
 ```
 shop-app                                    v1.0    abc123    50MB
-shop-registry.cr.gabia.com/shop-app   v1.0    abc123    50MB
+shop-registry.cr.gabiacloud.com/shop-app   v1.0    abc123    50MB
 
 ```
 
@@ -236,14 +236,14 @@ shop-registry.cr.gabia.com/shop-app   v1.0    abc123    50MB
 
 ```bash
 # 레지스트리에 Push
-docker push shop-registry.cr.gabia.com/shop-app:v1.0
+docker push shop-registry.cr.gabiacloud.com/shop-app:v1.0
 
 ```
 
 출력:
 
 ```
-The push refers to repository [shop-registry.cr.gabia.com/shop-app]
+The push refers to repository [shop-registry.cr.gabiacloud.com/shop-app]
 abc123: Pushed
 v1.0: digest: sha256:xxx size: 1234
 
@@ -290,10 +290,10 @@ v1.0: digest: sha256:xxx size: 1234
 ```bash
 # 로컬 이미지 삭제
 docker rmi shop-app:v1.0
-docker rmi shop-registry.cr.gabia.com/shop-app:v1.0
+docker rmi shop-registry.cr.gabiacloud.com/shop-app:v1.0
 
 # 레지스트리에서 Pull
-docker pull shop-registry.cr.gabia.com/shop-app:v1.0
+docker pull shop-registry.cr.gabiacloud.com/shop-app:v1.0
 
 ```
 
@@ -303,7 +303,7 @@ docker pull shop-registry.cr.gabia.com/shop-app:v1.0
 v1.0: Pulling from shop-app
 abc123: Pull complete
 Digest: sha256:xxx
-Status: Downloaded newer image for shop-registry.cr.gabia.com/shop-app:v1.0
+Status: Downloaded newer image for shop-registry.cr.gabiacloud.com/shop-app:v1.0
 
 ```
 
@@ -314,7 +314,7 @@ Status: Downloaded newer image for shop-registry.cr.gabia.com/shop-app:v1.0
 docker run -d \\
   --name shop-app-test \\
   -p 8080:80 \\
-  shop-registry.cr.gabia.com/shop-app:v1.0
+  shop-registry.cr.gabiacloud.com/shop-app:v1.0
 
 # 상태 확인
 docker ps
@@ -339,11 +339,11 @@ curl <http://localhost:8080>
 
 ```bash
 # latest 태그 추가
-docker tag shop-registry.cr.gabia.com/shop-app:v1.0 \\
-  shop-registry.cr.gabia.com/shop-app:latest
+docker tag shop-registry.cr.gabiacloud.com/shop-app:v1.0 \\
+  shop-registry.cr.gabiacloud.com/shop-app:latest
 
 # Push
-docker push shop-registry.cr.gabia.com/shop-app:latest
+docker push shop-registry.cr.gabiacloud.com/shop-app:latest
 
 ```
 
@@ -461,7 +461,7 @@ VPC 내부 서버 또는 Kubernetes 클러스터에서:
 
 ```bash
 # Private URI로 로그인
-docker login [랜덤ID].registry.gabia.com
+docker login [랜덤ID].private-cr.gabiacloud.com
 
 ```
 
@@ -501,13 +501,13 @@ docker pull [랜덤ID].private-cr.gabiacloud.com/shop-app:v1.0
 
 ```bash
 # 기존 인증 정보 삭제
-docker logout shop-registry.cr.gabia.com
+docker logout shop-registry.cr.gabiacloud.com
 
 # 캐시된 자격 증명 확인
 cat ~/.docker/config.json
 
 # 재로그인
-docker login shop-registry.cr.gabia.com
+docker login shop-registry.cr.gabiacloud.com
 
 ```
 
@@ -519,7 +519,7 @@ docker images | grep shop-registry
 
 # 올바른 형식
 # [레지스트리URI]/[이미지명]:[태그]
-# shop-registry.cr.gabia.com/shop-app:v1.0
+# shop-registry.cr.gabiacloud.com/shop-app:v1.0
 
 ```
 
@@ -552,8 +552,8 @@ docker stop shop-app-test
 docker rm shop-app-test
 
 # 로컬 이미지 삭제
-docker rmi shop-registry.cr.gabia.com/shop-app:v1.0
-docker rmi shop-registry.cr.gabia.com/shop-app:latest
+docker rmi shop-registry.cr.gabiacloud.com/shop-app:v1.0
+docker rmi shop-registry.cr.gabiacloud.com/shop-app:latest
 
 ```
 
