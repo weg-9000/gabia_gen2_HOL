@@ -320,7 +320,7 @@ docker run -d \
 docker ps
 
 # 동작 테스트
-curl <http://localhost:8080>
+curl http://localhost:8080
 
 ```
 
@@ -339,7 +339,7 @@ curl <http://localhost:8080>
 
 ```bash
 # latest 태그 추가
-docker tag shop-registry.cr.gabiacloud.com/shop-app:v1.0 \\
+docker tag shop-registry.cr.gabiacloud.com/shop-app:v1.0 \
   shop-registry.cr.gabiacloud.com/shop-app:latest
 
 # Push
