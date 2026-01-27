@@ -16,14 +16,14 @@
 ## 목표 아키텍처
 
 ```
+옵션 1: PVC 없는 구조 (4단계까지)
+
                     ┌─────────────────┐
                     │   LoadBalancer  │
-                    │  (Public IP)    │
                     └────────┬────────┘
                              │
                     ┌────────▼────────┐
                     │     Service     │
-                    │   (shop-api)    │
                     └────────┬────────┘
                              │
          ┌───────────────────┼───────────────────┐
@@ -31,26 +31,75 @@
 ┌────────▼────────┐ ┌────────▼────────┐ ┌────────▼────────┐
 │      Pod        │ │      Pod        │ │      Pod        │
 │   shop-api-1    │ │   shop-api-2    │ │   shop-api-3    │
-└────────┬────────┘ └────────┬────────┘ └────────┬────────┘
-         │                   │                   │
-         └───────────────────┼───────────────────┘
+│  (No Volume)    │ │  (No Volume)    │ │  (No Volume)    │
+└─────────────────┘ └─────────────────┘ └─────────────────┘
+                             │
+┌────────────────────────────┼────────────────────────────┐
+│                  Container Registry                     │
+│              [랜덤ID].cr.gabiacloud.com                
+                             │
+┌────────────────────────────┼────────────────────────────┐
+│                  Container Registry                     │
+│              [랜덤ID].cr.gabiacloud.com                 │
+└─────────────────────────────────────────────────────────┘
+
+옵션 2: PVC 연결 구조 (스토리지 연동 후)
+
+                    ┌─────────────────┐
+                    │   LoadBalancer  │
+                    └────────┬────────┘
+                             │
+                    ┌────────▼────────┐
+                    │     Service     │
+                    └────────┬────────┘
+                             │
+                    ┌────────▼────────┐
+                    │      Pod        │
+                    │   shop-api      │
+                    │   (replicas=1)  │
+                    └────────┬────────┘
                              │
                     ┌────────▼────────┐
                     │  PVC (Block)    │
-                    │   Cinder CSI    │
+                    │   10Gi RWO      │
+                    │   ssd-iscsi     │
                     └────────┬────────┘
                              │
 ┌────────────────────────────┼────────────────────────────┐
 │                  Container Registry                     │
-│                   (Private URI)                         │
-│              [랜덤ID].registry.gabia.com                │
+│              [랜덤ID].cr.gabiacloud.com                 │
 └─────────────────────────────────────────────────────────┘
+
 
 ```
 
 ---
 
 ## 실습 단계
+
+### 0. 사전 준비: 샘플 이미지 Push
+
+**⚠️ 이 단계는 Docker가 설치된 VM 서버에서 실행합니다.**
+
+실습에 사용할 샘플 이미지를 레지스트리에 업로드합니다.
+
+```bash
+# VM 서버에 접속하여 실행
+
+# 1. nginx 이미지 다운로드
+docker pull nginx:latest
+
+# 2. 레지스트리 로그인
+docker login [랜덤ID].cr.gabiacloud.com
+
+# 3. 이미지 태그 변경
+docker tag nginx:latest [랜덤ID].cr.gabiacloud.com/shop-app:v1.0
+
+# 4. Push
+docker push [랜덤ID].cr.gabiacloud.com/shop-app:v1.0
+
+# 5. 확인
+docker images | grep shop-app
 
 ### 1. 컨테이너 레지스트리 네트워크 확인
 
@@ -68,19 +117,21 @@
 
 연결되어 있지 않으면 네트워크 추가:
 
-```
 콘솔 > 컨테이너 레지스트리 > shop-registry > 네트워크 변경 > shop-subnet 추가
-
 ```
+
+
+
+## 이제 부터는 로컬 pc에서 진행됩니다!
 
 ### 2. 레지스트리 인증 Secret 생성
 
 ```bash
 # 레지스트리 인증 Secret 생성
-kubectl create secret docker-registry registry-secret \\
-  --docker-server=[랜덤ID].registry.gabia.com \\
-  --docker-username=[가비아 클라우드 계정] \\
-  --docker-password=[계정 비밀번호] \\
+kubectl create secret docker-registry registry-secret `
+  --docker-server=[랜덤ID].cr.gabiacloud.com `
+  --docker-username=[가비아 클라우드 계정] `
+  --docker-password=[계정 비밀번호] `
   --docker-email=[이메일]
 
 # Secret 확인
@@ -100,16 +151,11 @@ registry-secret   kubernetes.io/dockerconfigjson   1      10s
 
 ```bash
 # configmap.yaml 작성
-cat << 'EOF' > configmap.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: shop-api-config
-data:
-  LOG_LEVEL: "INFO"
-  API_VERSION: "v1.0"
-  APP_ENV: "production"
-EOF
+kubectl create configmap shop-api-config `
+  --from-literal=LOG_LEVEL=INFO `
+  --from-literal=API_VERSION=v1.0 `
+  --from-literal=APP_ENV=production `
+  --dry-run=client -o yaml > configmap.yaml
 
 # ConfigMap 적용
 kubectl apply -f configmap.yaml
@@ -123,7 +169,7 @@ kubectl get configmap
 
 ```bash
 # shop-api-deployment.yaml 작성
-cat << 'EOF' > shop-api-deployment.yaml
+@"
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -142,7 +188,7 @@ spec:
     spec:
       containers:
       - name: api
-        image: [랜덤ID].registry.gabia.com/shop-app:v1.0
+        image: [랜덤ID].cr.gabiacloud.com/shop-app:v1.0
         ports:
         - containerPort: 80
         envFrom:
@@ -169,7 +215,13 @@ spec:
           periodSeconds: 5
       imagePullSecrets:
       - name: registry-secret
-EOF
+"@ | Out-File -FilePath shop-api-deployment.yaml -Encoding UTF8
+
+
+image: [랜덤ID].private-cr.gabiacloud.com/shop-app:v1.0
+        ^^^^^^^^
+        여기를 자신의 레지스트리 ID로 교체
+
 
 # Deployment 적용
 kubectl apply -f shop-api-deployment.yaml
@@ -228,11 +280,14 @@ shop-api-6d7f8c9b5d-ghi56   1/1     Running   10.0.1.22    shop-cluster-worker-1
 
 ```bash
 # shop-api-service.yaml 작성
-cat << 'EOF' > shop-api-service.yaml
+@"
 apiVersion: v1
 kind: Service
 metadata:
   name: shop-api
+  annotations:
+    loadbalancer.openstack.org/availability-zone: "KR1-Zone1-LB"
+    loadbalancer.openstack.org/flavor-id: "adc12270-f56a-4ef1-bb00-429aad71ef6e"
 spec:
   selector:
     app: shop-api
@@ -241,10 +296,11 @@ spec:
     port: 80
     targetPort: 80
   type: LoadBalancer
-EOF
+"@ | Out-File -FilePath shop-api-service.yaml -Encoding UTF8
 
 # Service 적용
 kubectl apply -f shop-api-service.yaml
+
 
 ```
 
@@ -268,7 +324,7 @@ shop-api   LoadBalancer   10.96.45.123   <pending>     80:31234/TCP   30s
 
 ```
 NAME       TYPE           CLUSTER-IP     EXTERNAL-IP     PORT(S)        AGE
-shop-api   LoadBalancer   10.96.45.123   203.0.113.100   80:31234/TCP   2m
+shop-api   LoadBalancer   10.96.45.123   [주소]   80:31234/TCP   2m
 
 ```
 
@@ -276,7 +332,7 @@ shop-api   LoadBalancer   10.96.45.123   203.0.113.100   80:31234/TCP   2m
 
 ```bash
 # 외부에서 접속 테스트
-curl <http://203.0.113.100/>
+curl.exe http://[EXTERNAL-IP 주소]
 
 ```
 
@@ -317,19 +373,16 @@ shop-api   10.0.1.20:80,10.0.1.21:80,10.0.1.22:80        5m
 # StorageClass 확인
 kubectl get storageclass
 
+# 출력:
 ```
-
-출력:
-
-```
-NAME                 PROVISIONER                RECLAIMPOLICY   VOLUMEBINDINGMODE
-cinder-csi (default) cinder.csi.openstack.org   Delete          Immediate
-
+NAME                    PROVISIONER                RECLAIMPOLICY   VOLUMEBINDINGMODE
+ssd-iscsi              cinder.csi.openstack.org   Delete          WaitForFirstConsumer
+hdd-iscsi              cinder.csi.openstack.org   Delete          WaitForFirstConsumer
 ```
 
 ```bash
 # pvc.yaml 작성
-cat << 'EOF' > pvc.yaml
+@"
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -337,11 +390,11 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: cinder-csi
+  storageClassName: ssd-iscsi
   resources:
     requests:
       storage: 10Gi
-EOF
+"@ | Out-File -FilePath pvc.yaml -Encoding UTF8
 
 # PVC 적용
 kubectl apply -f pvc.yaml
@@ -363,7 +416,7 @@ shop-data-pvc   Bound    pvc-abc123-def456-ghi789                   10Gi       R
 
 ```bash
 # shop-api-deployment-pvc.yaml
-cat << 'EOF' > shop-api-deployment-pvc.yaml
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -371,7 +424,9 @@ metadata:
   labels:
     app: shop-api
 spec:
-  replicas: 1
+  replicas: 1  # ← PVC RWO 모드이므로 1개만 가능
+  strategy:
+    type: Recreate  # ← RollingUpdate 대신 Recreate 사용
   selector:
     matchLabels:
       app: shop-api
@@ -382,12 +437,15 @@ spec:
     spec:
       containers:
       - name: api
-        image: [랜덤ID].registry.gabia.com/shop-app:v1.0
+        image: [랜덤ID].cr.gabiacloud.com/shop-app:v1.0  # ← Private Registry 이미지
         ports:
         - containerPort: 80
+        envFrom:
+        - configMapRef:
+            name: shop-api-config
         volumeMounts:
         - name: data-volume
-          mountPath: /app/data
+          mountPath: /usr/share/nginx/html
         resources:
           requests:
             cpu: "100m"
@@ -395,25 +453,41 @@ spec:
           limits:
             cpu: "500m"
             memory: "512Mi"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
       volumes:
       - name: data-volume
         persistentVolumeClaim:
           claimName: shop-data-pvc
       imagePullSecrets:
       - name: registry-secret
-EOF
-
-# 적용
-kubectl apply -f shop-api-deployment-pvc.yaml
 
 ```
 
-조건:
+확인:
+```
+kubectl get pvc,pod
+```
 
-- Block Storage (RWO): 단일 Pod만 연결 가능
-- replicas: 1로 설정 필요
+출력:
+```
+NAME            STATUS   VOLUME                                     CAPACITY   ACCESS MODES
+shop-data-pvc   Bound    pvc-abc123-def456-ghi789                   10Gi       RWO
 
----
+NAME                           READY   STATUS              RESTARTS   AGE
+pod/shop-api-86f69ffc4-cdkjj   1/1     ContainerCreating   0          7s
+
+```
 
 ## 롤링 업데이트
 
@@ -421,7 +495,7 @@ kubectl apply -f shop-api-deployment-pvc.yaml
 
 ```bash
 # 새 이미지 버전으로 업데이트
-kubectl set image deployment/shop-api api=[랜덤ID].registry.gabia.com/shop-app:v1.1
+kubectl set image deployment/shop-api api=[랜덤ID].6f02v7el.private-cr.gabiacloud.com/shop-app:v1.1
 
 # 롤아웃 상태 확인
 kubectl rollout status deployment/shop-api
