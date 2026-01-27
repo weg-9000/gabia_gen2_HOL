@@ -140,7 +140,7 @@ VPC: shop-vpc (10.0.0.0/16)
 ssh -i lab-keypair.pem ubuntu@[서버 공인IP]
 
 # Docker 설치
-curl -fsSL <https://get.docker.com> | sh
+curl -fsSL https://get.docker.com | sh
 
 # 현재 사용자를 docker 그룹에 추가
 sudo usermod -aG docker $USER
